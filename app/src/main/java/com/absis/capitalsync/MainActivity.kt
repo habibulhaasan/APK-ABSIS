@@ -18,11 +18,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize Firebase
+        // Correct initialization for Firebase
         FirebaseApp.initializeApp(this)
         enableEdgeToEdge()
 
-        // Handle Firebase password-reset deep link
+        // Deep link handling for password resets
         val startRoute = intent?.data?.let { uri ->
             val mode    = uri.getQueryParameter("mode")
             val oobCode = uri.getQueryParameter("oobCode") ?: ""
