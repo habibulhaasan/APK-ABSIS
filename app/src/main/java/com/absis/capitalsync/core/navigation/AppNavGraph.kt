@@ -18,6 +18,10 @@ import com.absis.capitalsync.ui.investments.InvestmentsScreen
 import com.absis.capitalsync.ui.ledger.LedgerScreen
 import com.absis.capitalsync.ui.loans.LoansScreen
 import com.absis.capitalsync.ui.profile.ProfileScreen
+// At the top of the file, ensure these imports exist:
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.dp
 
 // ── Route definitions ─────────────────────────────────────────────────────────
 sealed class Screen(val route: String) {
@@ -154,7 +158,7 @@ private fun AdminPlaceholder(onBack: () -> Unit) {
     androidx.compose.foundation.layout.Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(androidx.compose.ui.unit.dp),
+            .padding(24.dp),
         contentAlignment = androidx.compose.ui.Alignment.Center
     ) {
         androidx.compose.foundation.layout.Column(
@@ -168,7 +172,7 @@ private fun AdminPlaceholder(onBack: () -> Unit) {
             androidx.compose.material3.Text(
                 "Admin screens are built separately.",
                 color = com.absis.capitalsync.ui.theme.SubtitleGray,
-                modifier = Modifier.padding(top = androidx.compose.ui.unit.dp)
+                modifier = Modifier.padding(top = 8.dp)
             )
             androidx.compose.material3.Spacer(Modifier.height(20.dp))
             androidx.compose.material3.OutlinedButton(onClick = onBack) {

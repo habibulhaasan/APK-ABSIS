@@ -1,8 +1,3 @@
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// res/xml/network_security_config.xml
-// Allows GAS (Google Apps Script) HTTPS calls
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-/*
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
     <base-config cleartextTrafficPermitted="false">
@@ -10,10 +5,8 @@
             <certificates src="system"/>
         </trust-anchors>
     </base-config>
-    <!-- Allow GAS redirects (script.google.com → script.googleusercontent.com) -->
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">script.google.com</domain>
         <domain includeSubdomains="true">script.googleusercontent.com</domain>
     </domain-config>
 </network-security-config>
-*/

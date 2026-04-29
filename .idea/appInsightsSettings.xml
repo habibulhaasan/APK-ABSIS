@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="com.absis.capitalsync" />
-                  <option name="mobileSdkAppId" value="1:938799579766:android:061665ee2f6476b26ad557" />
-                  <option name="projectId" value="absis-capital-sync" />
-                  <option name="projectNumber" value="938799579766" />
+                  <option name="appId" value="PLACEHOLDER" />
+                  <option name="mobileSdkAppId" value="" />
+                  <option name="projectId" value="" />
+                  <option name="projectNumber" value="" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />
