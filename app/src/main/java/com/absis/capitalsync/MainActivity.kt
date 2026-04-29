@@ -4,7 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.navigation.compose.rememberNavController
 import com.absis.capitalsync.core.navigation.AppNavGraph
 import com.absis.capitalsync.core.navigation.Screen
@@ -18,11 +17,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Correct initialization for Firebase
         FirebaseApp.initializeApp(this)
         enableEdgeToEdge()
 
-        // Deep link handling for password resets
         val startRoute = intent?.data?.let { uri ->
             val mode    = uri.getQueryParameter("mode")
             val oobCode = uri.getQueryParameter("oobCode") ?: ""
