@@ -295,23 +295,31 @@ class InstallmentViewModel @Inject constructor() : ViewModel() {
         0.0
     }
 
-    val totalBase: Double = if (isSpecial) specialBase
-                            else state.selectedMonths.size.toDouble() * state.baseAmount
+    val totalBase: Double = if (isSpecial) {
+        specialBase
+    } else {
+        state.selectedMonths.size.toDouble() * state.baseAmount
+    }
 
-    val totalPenalty: Double = if (isSpecial) 0.0
-                               else state.selectedMonths.count { isMonthLate(it, 10) }.toDouble() * state.penalty
+    val totalPenalty: Double = if (isSpecial) {
+        0.0
+    } else {
+        state.selectedMonths.count { isMonthLate(it, 10) }.toDouble() * state.penalty
+    }
 
     val feeRate: Double = getGatewayFeeRate(state.selectedMethod)
     val fee: Double = (totalBase + totalPenalty) * feeRate
     val grand: Double = totalBase + totalPenalty + fee
 
-    _uiState.update { it.copy(
-        totalBase    = totalBase,
-        totalPenalty = totalPenalty,
-        feeRate      = feeRate,
-        fee          = fee,
-        grandTotal   = grand,
-    )}
+    _uiState.update {
+        it.copy(
+            totalBase    = totalBase,
+            totalPenalty = totalPenalty,
+            feeRate      = feeRate,
+            fee          = fee,
+            grandTotal   = grand
+        )
+    }
 }
 
     private fun getGatewayFeeRate(method: String): Double {

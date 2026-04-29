@@ -2,7 +2,6 @@ package com.absis.capitalsync.core.firebase
 
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.MemoryCacheSettings
 import com.google.firebase.firestore.PersistentCacheSettings
 import com.google.firebase.firestore.firestoreSettings
 import com.google.firebase.storage.FirebaseStorage
@@ -17,9 +16,7 @@ object FirebaseModule {
         FirebaseFirestore.getInstance().apply {
             firestoreSettings = firestoreSettings {
                 setLocalCacheSettings(
-                    PersistentCacheSettings.newBuilder()
-                        .setSizeBytes(PersistentCacheSettings.CACHE_SIZE_UNLIMITED)
-                        .build()
+                    PersistentCacheSettings.newBuilder().build()
                 )
             }
         }

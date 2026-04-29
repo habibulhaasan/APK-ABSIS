@@ -33,6 +33,12 @@ import com.absis.capitalsync.ui.ledger.LedgerScreen
 import com.absis.capitalsync.ui.loans.LoansScreen
 import com.absis.capitalsync.ui.profile.ProfileScreen
 import com.absis.capitalsync.ui.theme.SubtitleGray
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 
 // ── Route definitions ─────────────────────────────────────────────────────────
 sealed class Screen(val route: String) {
@@ -166,28 +172,24 @@ fun AppNavGraph(
 // ── Temporary admin placeholder ───────────────────────────────────────────────
 @Composable
 private fun AdminPlaceholder(onBack: () -> Unit) {
-    androidx.compose.foundation.layout.Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        contentAlignment = androidx.compose.ui.Alignment.Center
+    Box(
+        modifier         = Modifier.fillMaxSize().padding(24.dp),
+        contentAlignment = Alignment.Center
     ) {
-        androidx.compose.foundation.layout.Column(
-            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
-        ) {
-            androidx.compose.material3.Text(
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
                 "🛠 Admin Panel",
-                style = androidx.compose.material3.MaterialTheme.typography.headlineSmall,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                style      = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
             )
-            androidx.compose.material3.Text(
+            Text(
                 "Admin screens are built separately.",
-                color = com.absis.capitalsync.ui.theme.SubtitleGray,
+                color    = SubtitleGray,
                 modifier = Modifier.padding(top = 8.dp)
             )
-            androidx.compose.material3.Spacer(Modifier.height(20.dp))
-            androidx.compose.material3.OutlinedButton(onClick = onBack) {
-                androidx.compose.material3.Text("← Go Back")
+            Spacer(Modifier.height(20.dp))
+            OutlinedButton(onClick = onBack) {
+                Text("← Go Back")
             }
         }
     }
