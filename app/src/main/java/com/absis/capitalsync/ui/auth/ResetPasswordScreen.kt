@@ -1,7 +1,6 @@
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 // ui/auth/ResetPasswordScreen.kt
-// Mirrors reset-password/page.js exactly
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 package com.absis.capitalsync.ui.auth
 
 import androidx.compose.foundation.layout.*
@@ -20,10 +19,10 @@ data class PasswordStrength(val score: Int, val label: String, val color: Color)
 
 fun getStrength(pw: String): PasswordStrength {
     var score = 0
-    if (pw.length >= 8)              score++
-    if (pw.any { it.isUpperCase() }) score++
-    if (pw.any { it.isDigit() })     score++
-    if (pw.any { !it.isLetterOrDigit() }) score++
+    if (pw.length >= 8)                    score++
+    if (pw.any { it.isUpperCase() })       score++
+    if (pw.any { it.isDigit() })           score++
+    if (pw.any { !it.isLetterOrDigit() })  score++
     return when (score) {
         1    -> PasswordStrength(1, "Weak",   Color(0xFFEF4444))
         2    -> PasswordStrength(2, "Fair",   Color(0xFFF59E0B))

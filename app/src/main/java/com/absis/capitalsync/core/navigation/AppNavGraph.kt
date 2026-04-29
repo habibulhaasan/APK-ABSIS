@@ -1,16 +1,30 @@
 // core/navigation/AppNavGraph.kt
 package com.absis.capitalsync.core.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
-import com.absis.capitalsync.ui.auth.*
+import com.absis.capitalsync.ui.auth.ForgotPasswordScreen
+import com.absis.capitalsync.ui.auth.LoginScreen
+import com.absis.capitalsync.ui.auth.RegisterScreen
+import com.absis.capitalsync.ui.auth.ResetPasswordScreen
 import com.absis.capitalsync.ui.dashboard.DashboardScreen
 import com.absis.capitalsync.ui.expenses.ExpensesScreen
 import com.absis.capitalsync.ui.installment.InstallmentScreen
@@ -18,10 +32,7 @@ import com.absis.capitalsync.ui.investments.InvestmentsScreen
 import com.absis.capitalsync.ui.ledger.LedgerScreen
 import com.absis.capitalsync.ui.loans.LoansScreen
 import com.absis.capitalsync.ui.profile.ProfileScreen
-// At the top of the file, ensure these imports exist:
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.ui.unit.dp
+import com.absis.capitalsync.ui.theme.SubtitleGray
 
 // ── Route definitions ─────────────────────────────────────────────────────────
 sealed class Screen(val route: String) {

@@ -1,7 +1,5 @@
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ui/auth/ResetPasswordViewModel.kt
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 package com.absis.capitalsync.ui.auth
 
 import androidx.lifecycle.ViewModel
@@ -41,15 +39,14 @@ class ResetPasswordViewModel @Inject constructor() : ViewModel() {
     }
 
     fun resetPassword(oobCode: String, password: String, confirm: String) = viewModelScope.launch {
-        // Validate
-        val validationError = when {
-            password.length < 8           -> "Password must be at least 8 characters."
-            getStrength(password).score < 2 -> "Please choose a stronger password."
-            password != confirm           -> "Passwords do not match."
-            else                          -> ""
-        }
-        if (validationError.isNotEmpty()) { _error.value = validationError; return@launch }
-
+    val validationError = when {
+        password.length < 8                    -> "Password must be at least 8 characters."
+        getStrength(password).score < 2        -> "Please choose a stronger password."
+        password != confirm                    -> "Passwords do not match."
+        else                                   -> ""
+    }
+    if (validationError.isNotEmpty()) { _error.value = validationError; return@launch }
+    
         _error.value   = ""
         _loading.value = true
         try {

@@ -280,34 +280,39 @@ class InstallmentViewModel @Inject constructor() : ViewModel() {
     }
 
     // ── Recalculate totals ────────────────────────────────────────────────────
-    private fun recalculate() {
-        val state = _uiState.value
-        val isSpecial = state.payMode == PayMode.SPECIAL && state.selectedSpecial != null
+   private fun recalculate() {
+    val state = _uiState.value
+    val isSpecial = state.payMode == PayMode.SPECIAL && state.selectedSpecial != null
 
-        val specialBase = if (isSpecial) {
-            val sub = state.selectedSpecial!!
-            if (sub.allowCustomAmount) state.customSpecialAmount.toDoubleOrNull() ?: sub.amount
-            else sub.amount
-        } else 0.0
-
-        val totalBase = if (isSpecial) specialBase
-                        else state.selectedMonths.size * state.baseAmount
-
-        val totalPenalty = if (isSpecial) 0.0
-                           else state.selectedMonths.count { isMonthLate(it, 10) } * state.penalty
-
-        val feeRate = getGatewayFeeRate(state.selectedMethod)
-        val fee     = ((totalBase + totalPenalty) * feeRate).toLong().toDouble()
-        val grand   = totalBase + totalPenalty + fee
-
-        _uiState.update { it.copy(
-            totalBase    = totalBase,
-            totalPenalty = totalPenalty,
-            feeRate      = feeRate,
-            fee          = fee,
-            grandTotal   = grand,
-        )}
+    val specialBase: Double = if (isSpecial) {
+        val sub = state.selectedSpecial!!
+        if (sub.allowCustomAmount) {
+            state.customSpecialAmount.toDoubleOrNull() ?: sub.amount
+        } else {
+            sub.amount
+        }
+    } else {
+        0.0
     }
+
+    val totalBase: Double = if (isSpecial) specialBase
+                            else state.selectedMonths.size.toDouble() * state.baseAmount
+
+    val totalPenalty: Double = if (isSpecial) 0.0
+                               else state.selectedMonths.count { isMonthLate(it, 10) }.toDouble() * state.penalty
+
+    val feeRate: Double = getGatewayFeeRate(state.selectedMethod)
+    val fee: Double = (totalBase + totalPenalty) * feeRate
+    val grand: Double = totalBase + totalPenalty + fee
+
+    _uiState.update { it.copy(
+        totalBase    = totalBase,
+        totalPenalty = totalPenalty,
+        feeRate      = feeRate,
+        fee          = fee,
+        grandTotal   = grand,
+    )}
+}
 
     private fun getGatewayFeeRate(method: String): Double {
         val cfg = _gatewayFees[method] ?: return 0.0

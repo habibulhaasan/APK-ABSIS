@@ -1,7 +1,5 @@
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ui/loans/LoansScreen.kt
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 package com.absis.capitalsync.ui.loans
 
 import androidx.compose.foundation.*
@@ -213,22 +211,24 @@ fun LoanDetailSheet(loan: LoanItem, onClose: () -> Unit) {
     val totalCount  = loan.repaymentSchedule.size
     val progressPct = if (totalCount > 0) paidCount.toFloat() / totalCount else 0f
 
-    // Scrim
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color(0x66000000))
-            .clickable(onClick = onClose)
-    )
+    Box(Modifier.fillMaxSize()) {
+        // Scrim
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color(0x66000000))
+                .clickable(onClick = onClose)
+        )
 
-    // Sheet
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .fillMaxHeight(0.90f)
-            .align(Alignment.BottomCenter)
-            .background(Color.White, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-    ) {
+        // Sheet
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.90f)
+                .align(Alignment.BottomCenter)
+                .background(Color.White, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+        ) {
+
         // Drag handle
         Box(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp),
             contentAlignment = Alignment.Center) {

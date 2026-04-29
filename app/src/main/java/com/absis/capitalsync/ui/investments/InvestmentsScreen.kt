@@ -368,104 +368,150 @@ fun ProjectDetailSheet(
     val netProfit  = if (isPeriodic) project.totalReturns - project.totalExpenses else project.profit
     var activeTab  by remember { mutableStateOf("overview") }
 
-    // Scrim
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color(0x66000000))
-            .clickable(onClick = onClose)
-    )
+    Box(Modifier.fillMaxSize()) {
+        // Scrim
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color(0x66000000))
+                .clickable(onClick = onClose)
+        )
 
-    // Sheet
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .fillMaxHeight(0.92f)
-            .align(Alignment.BottomCenter)  // NOTE: this needs to be inside a Box
-            .background(Color.White, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-    ) {
-        // Drag handle
-        Box(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp),
-            contentAlignment = Alignment.Center) {
-            Surface(Modifier.size(36.dp, 4.dp), RoundedCornerShape(2.dp), color = Color(0xFFE2E8F0)) {}
-        }
-
-        // Header
-        Row(
-            Modifier.fillMaxWidth().padding(12.dp, 12.dp, 12.dp, 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
+        // Sheet
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f)
+                .align(Alignment.BottomCenter)
+                .background(Color.White, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
         ) {
-            Column(Modifier.weight(1f)) {
-                Text(project.title, fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                    color = Color(0xFF0F172A), modifier = Modifier.padding(bottom = 6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                    val (fg, bg, dot) = STATUS_CONFIG[project.status]
-                        ?: Triple(Color(0xFF92400E), Color(0xFFFEF3C7), Color(0xFFF59E0B))
-                    Surface(color = bg, shape = RoundedCornerShape(99.dp)) {
-                        Row(Modifier.padding(10.dp, 3.dp), verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Surface(Modifier.size(6.dp), RoundedCornerShape(50.dp), color = dot) {}
-                            Text(cap(project.status), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = fg)
-                        }
-                    }
-                    Surface(color = Color(0xFFEFF6FF), shape = RoundedCornerShape(6.dp)) {
-                        Text(project.type, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1D4ED8), modifier = Modifier.padding(10.dp, 3.dp))
-                    }
-                    Surface(
-                        color = if (isPeriodic) Color(0xFFFAF5FF) else Color(0xFFF0FDF4),
-                        shape = RoundedCornerShape(6.dp)
-                    ) {
-                        Text(if (isPeriodic) "🔄 Periodic" else "📦 Lump Sum",
-                            fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                            color = if (isPeriodic) Color(0xFF7E22CE) else Color(0xFF14532D),
-                            modifier = Modifier.padding(10.dp, 3.dp))
-                    }
-                }
+            // Drag handle
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp, bottom = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    Modifier.size(36.dp, 4.dp),
+                    RoundedCornerShape(2.dp),
+                    color = Color(0xFFE2E8F0)
+                ) {}
             }
-            IconButton(onClick = onClose) {
-                Surface(Modifier.size(32.dp), RoundedCornerShape(50.dp),
-                    color = Color(0xFFF1F5F9), border = BorderStroke(1.dp, Color(0xFFE2E8F0))) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("✕", fontSize = 16.sp, color = Color(0xFF64748B))
-                    }
-                }
-            }
-        }
 
-        // Tab bar
-        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 16.dp)) {
-            listOf("overview" to "Overview", "transactions" to if (isPeriodic) "Transactions" else "Returns")
-                .forEach { (id, label) ->
-                    val sel = activeTab == id
-                    TextButton(
-                        onClick = { activeTab = id },
-                        modifier = Modifier
-                            .padding(0.dp)
-                            .border(
-                                width = 0.dp,
-                                color = Color.Transparent,
-                                shape = RoundedCornerShape(0.dp)
+            // Header
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp, 12.dp, 12.dp, 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment     = Alignment.Top
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        project.title,
+                        fontSize   = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color      = Color(0xFF0F172A),
+                        modifier   = Modifier.padding(bottom = 6.dp)
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val (fg, bg, dot) = STATUS_CONFIG[project.status]
+                            ?: Triple(Color(0xFF92400E), Color(0xFFFEF3C7), Color(0xFFF59E0B))
+                        Surface(color = bg, shape = RoundedCornerShape(99.dp)) {
+                            Row(
+                                Modifier.padding(10.dp, 3.dp),
+                                verticalAlignment     = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Surface(Modifier.size(6.dp), RoundedCornerShape(50.dp), color = dot) {}
+                                Text(cap(project.status), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = fg)
+                            }
+                        }
+                        Surface(color = Color(0xFFEFF6FF), shape = RoundedCornerShape(6.dp)) {
+                            Text(
+                                project.type,
+                                fontSize   = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color      = Color(0xFF1D4ED8),
+                                modifier   = Modifier.padding(10.dp, 3.dp)
                             )
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(label, fontSize = 13.sp,
-                                fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
-                                color = if (sel) Color(0xFF2563EB) else Color(0xFF64748B))
-                            if (sel) Surface(Modifier.height(2.dp).width(40.dp), color = Color(0xFF2563EB)) {}
+                        }
+                        Surface(
+                            color = if (isPeriodic) Color(0xFFFAF5FF) else Color(0xFFF0FDF4),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                if (isPeriodic) "🔄 Periodic" else "📦 Lump Sum",
+                                fontSize   = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color      = if (isPeriodic) Color(0xFF7E22CE) else Color(0xFF14532D),
+                                modifier   = Modifier.padding(10.dp, 3.dp)
+                            )
                         }
                     }
                 }
-        }
-
-        // Tab content
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-            when (activeTab) {
-                "overview"     -> OverviewTab(project, myShare, netProfit, isPeriodic)
-                "transactions" -> TransactionsTab(project, orgId, isPeriodic)
+                IconButton(onClick = onClose) {
+                    Surface(
+                        Modifier.size(32.dp),
+                        RoundedCornerShape(50.dp),
+                        color  = Color(0xFFF1F5F9),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("✕", fontSize = 16.sp, color = Color(0xFF64748B))
+                        }
+                    }
+                }
             }
-            Spacer(Modifier.height(32.dp))
+
+            // Tab bar
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 16.dp)
+            ) {
+                listOf(
+                    "overview"     to "Overview",
+                    "transactions" to if (isPeriodic) "Transactions" else "Returns"
+                ).forEach { (id, label) ->
+                    val sel = activeTab == id
+                    TextButton(onClick = { activeTab = id }) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                label,
+                                fontSize   = 13.sp,
+                                fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
+                                color      = if (sel) Color(0xFF2563EB) else Color(0xFF64748B)
+                            )
+                            if (sel) {
+                                Surface(
+                                    Modifier.height(2.dp).width(40.dp),
+                                    color = Color(0xFF2563EB)
+                                ) {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Tab content
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+            ) {
+                when (activeTab) {
+                    "overview"     -> OverviewTab(project, myShare, netProfit, isPeriodic)
+                    "transactions" -> TransactionsTab(project, orgId, isPeriodic)
+                }
+                Spacer(Modifier.height(32.dp))
+            }
         }
     }
 }

@@ -1,6 +1,6 @@
 // ui/profile/ProfileScreen.kt
 package com.absis.capitalsync.ui.profile
-
+import androidx.compose.material3.ExperimentalMaterial3Api
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -524,21 +524,39 @@ fun BilingualField(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DropdownField(options: List<String>, selected: String, enabled: Boolean, onSelect: (String) -> Unit) {
+fun DropdownField(
+    options:  List<String>,
+    selected: String,
+    enabled:  Boolean,
+    onSelect: (String) -> Unit
+) {
     var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded && enabled, onExpandedChange = { if (enabled) expanded = it }) {
+    ExposedDropdownMenuBox(
+        expanded        = expanded && enabled,
+        onExpandedChange = { if (enabled) expanded = it }
+    ) {
         OutlinedTextField(
-            value = selected.ifEmpty { "Select…" },
-            onValueChange = {},
-            readOnly = true, enabled = enabled,
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.fillMaxWidth().menuAnchor(),
-            shape = RoundedCornerShape(8.dp)
+            value          = selected.ifEmpty { "Select…" },
+            onValueChange  = {},
+            readOnly       = true,
+            enabled        = enabled,
+            trailingIcon   = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier       = Modifier
+                .fillMaxWidth()
+                .menuAnchor(),
+            shape          = RoundedCornerShape(8.dp)
         )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        ExposedDropdownMenu(
+            expanded        = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
             options.forEach { opt ->
-                DropdownMenuItem(text = { Text(opt) }, onClick = { onSelect(opt); expanded = false })
+                DropdownMenuItem(
+                    text    = { Text(opt) },
+                    onClick = { onSelect(opt); expanded = false }
+                )
             }
         }
     }
