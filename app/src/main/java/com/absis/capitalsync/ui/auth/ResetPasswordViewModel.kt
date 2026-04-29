@@ -1,12 +1,11 @@
-// ui/auth/ResetPasswordViewModel.kt
-
 package com.absis.capitalsync.ui.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
@@ -26,27 +25,33 @@ class ResetPasswordViewModel @Inject constructor() : ViewModel() {
     val error   = _error.asStateFlow()
     val loading = _loading.asStateFlow()
 
-    // Verify the oobCode from the Firebase deep link
     fun verifyCode(oobCode: String) = viewModelScope.launch {
         if (oobCode.isEmpty()) { _phase.value = ResetPhase.INVALID; return@launch }
         try {
-            val email      = auth.verifyPasswordResetCode(oobCode).await()
-            _email.value   = email
+            val result     = auth.verifyPasswordResetCode(oobCode).await()
+            _email.value   = result
             _phase.value   = ResetPhase.FORM
         } catch (e: Exception) {
-            _phase.value   = ResetPhase.INVALID
+            _phase.value = ResetPhase.INVALID
         }
     }
 
     fun resetPassword(oobCode: String, password: String, confirm: String) = viewModelScope.launch {
-    val validationError = when {
-        password.length < 8                    -> "Password must be at least 8 characters."
-        getStrength(password).score < 2        -> "Please choose a stronger password."
-        password != confirm                    -> "Passwords do not match."
-        else                                   -> ""
-    }
-    if (validationError.isNotEmpty()) { _error.value = validationError; return@launch }
-    
+        val pwLen    = password.length
+        val strength = getStrength(password)
+        val strengthScore: Int = strength.score
+
+        val validationError: String = when {
+            pwLen < 8         -> "Password must be at least 8 characters."
+            strengthScore < 2 -> "Please choose a stronger password."
+            password != confirm -> "Passwords do not match."
+            else              -> ""
+        }
+        if (validationError.isNotEmpty()) {
+            _error.value = validationError
+            return@launch
+        }
+
         _error.value   = ""
         _loading.value = true
         try {

@@ -33,12 +33,6 @@ import com.absis.capitalsync.ui.ledger.LedgerScreen
 import com.absis.capitalsync.ui.loans.LoansScreen
 import com.absis.capitalsync.ui.profile.ProfileScreen
 import com.absis.capitalsync.ui.theme.SubtitleGray
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 
 // ── Route definitions ─────────────────────────────────────────────────────────
 sealed class Screen(val route: String) {
