@@ -24,8 +24,8 @@ data class Project(
     val description: String,
     val type: String,
     val sector: String,
-    val status: String,           // proposed | active | completed | cancelled
-    val returnType: String,       // periodic | lumpsum
+    val status: String,
+    val returnType: String,
     val investedAmount: Double,
     val expectedReturnPct: Double,
     val actualReturnAmount: Double?,

@@ -108,7 +108,7 @@ fun InstallmentScreen(
         }
 
         // ── Re-registration required ──
-        if (uiState.reregPending) {
+        if (uiState.reregistrationPending) {
             InfoBanner(
                 bg = Color(0xFFFEF3C7), border = Color(0xFFFDE68A),
                 title = "🔄 Re-Registration Fee Required",
@@ -118,7 +118,7 @@ fun InstallmentScreen(
         }
 
         // ── Re-reg granted ──
-        if (uiState.reregGranted) {
+        if (uiState.reregistrationGranted) {
             InfoBanner(
                 bg = Color(0xFFF0FDF4), border = Color(0xFF86EFAC),
                 text = "✅ Re-registration fee waived — your admin has granted a rebate.",
@@ -176,7 +176,6 @@ fun InstallmentScreen(
                 unpaidMonths  = unpaidMonths,
                 selected      = uiState.selectedMonths,
                 penalty       = uiState.penalty,
-                baseAmount    = uiState.baseAmount,
                 onToggle      = { vm.toggleMonth(it) }
             )
         }
@@ -260,7 +259,6 @@ fun MonthPickerCard(
     unpaidMonths: List<String>,
     selected: Set<String>,
     penalty: Double,
-    baseAmount: Double,
     onToggle: (String) -> Unit
 ) {
     Card(shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {

@@ -253,15 +253,14 @@ fun ResetPasswordScreen(
                             if (password.isNotEmpty()) {
                                 Spacer(Modifier.height(8.dp))
                                 Row(
-                                    horizontalArrangement =
-                                        androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp)
+                                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp)
                                 ) {
-                                    repeat(4) { i ->
+                                    val score: Int = strength.score   // explicit Int fixes compareTo ambiguity
+                                    for (i in 1..4) {
                                         Surface(
                                             modifier = Modifier.weight(1f).height(4.dp),
-                                            shape = RoundedCornerShape(99.dp),
-                                            color = if ((i + 1) <= strength.score) strength.color
-                                                    else Color(0xFFE2E8F0)
+                                            shape    = RoundedCornerShape(99.dp),
+                                            color    = if (i <= score) strength.color else Color(0xFFE2E8F0)
                                         ) {}
                                     }
                                 }
@@ -275,8 +274,8 @@ fun ResetPasswordScreen(
                                         verticalArrangement =
                                             androidx.compose.foundation.layout.Arrangement.spacedBy(2.dp)
                                     ) {
-                                        listOf(
-                                            password.length >= 8 to "8+ characters",
+                                        listOf<Pair<Boolean, String>>(
+                                            (password.length >= 8) to "8+ characters",
                                             password.any { it.isUpperCase() } to "Uppercase letter",
                                             password.any { it.isDigit() } to "Number",
                                             password.any { !it.isLetterOrDigit() } to "Special character"
@@ -285,7 +284,7 @@ fun ResetPasswordScreen(
                                                 "${if (ok) "✓" else "○"} $text",
                                                 fontSize = 11.sp,
                                                 color = if (ok) Color(0xFF22C55E)
-                                                        else Color(0xFF94A3B8)
+                                                else Color(0xFF94A3B8)
                                             )
                                         }
                                     }
