@@ -21,8 +21,8 @@ import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil.compose.AsyncImage
 import com.absis.capitalsync.ui.common.AndroidWebView
+import com.absis.capitalsync.ui.common.SmartImage // Using your custom component for Base64
 
 val BLOOD_GROUPS   = listOf("A+","A-","B+","B-","AB+","AB-","O+","O-")
 val MARITAL_STATUS = listOf("Single","Married","Divorced","Widowed")
@@ -55,9 +55,9 @@ data class ProfileForm(
     val heirPhone: String = "", val heirAddressEn: String = "",
     val heirAddressBn: String = "",
     val photoUri: Uri? = null,
-    val photoUrl: String = "",       // can be https:// URL or data:image/... base64
+    val photoUrl: String = "",       
     val nomineePhotoUri: Uri? = null,
-    val nomineePhotoUrl: String = "", // same
+    val nomineePhotoUrl: String = "", 
     val idNo: String = "", val joiningDate: String = ""
 )
 
@@ -154,9 +154,9 @@ fun DocumentPreviewModal(file: LegalFile, onClose: () -> Unit) {
                 ) {
                     when {
                         file.mimeType.startsWith("image/") -> {
-                            AsyncImage(
-                                model              = file.url,
-                                contentDescription = file.name,
+                            // SmartImage handles Base64 or Drive URL preview
+                            SmartImage(
+                                source             = file.url,
                                 contentScale       = ContentScale.Fit,
                                 modifier           = Modifier
                                     .fillMaxSize()
@@ -164,13 +164,11 @@ fun DocumentPreviewModal(file: LegalFile, onClose: () -> Unit) {
                             )
                         }
                         file.fileId.isNotEmpty() -> {
-                            // Google Drive inline preview (same as Next.js iframe)
                             AndroidWebView(
                                 url = "https://drive.google.com/file/d/${file.fileId}/preview"
                             )
                         }
                         file.url.isNotEmpty() -> {
-                            // Fallback: Google Docs viewer
                             val viewerUrl = "https://docs.google.com/gview?embedded=true&url=" +
                                     java.net.URLEncoder.encode(file.url, "UTF-8")
                             AndroidWebView(url = viewerUrl)
@@ -244,7 +242,7 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
             .padding(16.dp)
     ) {
 
-        // ── Header ──
+        // Header
         Row(
             Modifier.fillMaxWidth().padding(bottom = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -292,7 +290,7 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
             }
         }
 
-        // ── Toast ──
+        // Toast
         toast?.let { t ->
             Surface(
                 color    = if (t.isError) Color(0xFFFEE2E2) else Color(0xFFDCFCE7),
@@ -309,7 +307,7 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
             }
         }
 
-        // ── Last updated ──
+        // Last updated
         lastUpdated?.let {
             Surface(
                 color    = Color(0xFFF0F9FF),
@@ -326,7 +324,7 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
             }
         }
 
-        // ── Photo + Member ID strip ──
+        // Photo Strip
         Card(
             shape    = RoundedCornerShape(12.dp),
             colors   = CardDefaults.cardColors(containerColor = Color.White),
@@ -336,7 +334,7 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
         ) {
             Row(Modifier.padding(20.dp), verticalAlignment = Alignment.Top) {
 
-                // ── Avatar ──
+                // Avatar using SmartImage for Base64 support
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
                         modifier = Modifier
@@ -351,22 +349,14 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        when {
-                            // Newly picked local Uri
-                            f.photoUri != null -> AsyncImage(
-                                model              = f.photoUri,
-                                contentDescription = "Photo",
+                        if (f.photoUrl.isNotEmpty()) {
+                            SmartImage(
+                                source             = f.photoUrl,
                                 contentScale       = ContentScale.Crop,
                                 modifier           = Modifier.fillMaxSize()
                             )
-                            // Existing URL (https or data:image base64)
-                            f.photoUrl.isNotEmpty() -> AsyncImage(
-                                model              = f.photoUrl,
-                                contentDescription = "Photo",
-                                contentScale       = ContentScale.Crop,
-                                modifier           = Modifier.fillMaxSize()
-                            )
-                            else -> Text(
+                        } else {
+                            Text(
                                 f.nameEnglish.firstOrNull()?.uppercase() ?: "?",
                                 fontSize   = 32.sp,
                                 fontWeight = FontWeight.Bold,
@@ -386,7 +376,7 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
 
                 Spacer(Modifier.width(20.dp))
 
-                // ── Quick info ──
+                // Quick info
                 Column(
                     Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -429,7 +419,7 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
             }
         }
 
-        // ── Personal Information ──
+        // 👤 Personal Information
         ProfileSection("👤 Personal Information") {
             BilingualField("Full Name", "nameEnglish", "nameBengali", f, locked, vm::updateField)
             BilingualField("Father's Name", "fatherNameEn", "fatherNameBn", f, locked, vm::updateField)
@@ -476,7 +466,7 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
             }
         }
 
-        // ── Address ──
+        // 📍 Address
         ProfileSection("📍 Address Information") {
             ProfileField("Present Address (English)", fullWidth = true) {
                 OutlinedTextField(value = f.presentAddressEn, onValueChange = { if (!locked) vm.updateField("presentAddressEn", it) },
@@ -500,7 +490,7 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
             }
         }
 
-        // ── Nominee ──
+        // 👨‍👩‍👧 Nominee using SmartImage for Base64 support
         ProfileSection("👨‍👩‍👧 Nominee / Heir Information") {
             ProfileField("Nominee Photo") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -512,16 +502,13 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
                             .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(10.dp)),
                         contentAlignment = Alignment.Center
                     ) {
-                        when {
-                            f.nomineePhotoUri != null -> AsyncImage(
-                                model = f.nomineePhotoUri, contentDescription = null,
-                                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                        if (f.nomineePhotoUrl.isNotEmpty()) {
+                            SmartImage(
+                                source = f.nomineePhotoUrl, contentScale = ContentScale.Crop, 
+                                modifier = Modifier.fillMaxSize()
                             )
-                            f.nomineePhotoUrl.isNotEmpty() -> AsyncImage(
-                                model = f.nomineePhotoUrl, contentDescription = null,
-                                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
-                            )
-                            else -> Text("👤", fontSize = 26.sp)
+                        } else {
+                            Text("👤", fontSize = 26.sp)
                         }
                     }
                     if (!locked) {
@@ -563,7 +550,7 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
             }
         }
 
-        // ── Document Uploads ──
+        // 📂 Document Uploads
         ProfileSection("📂 Document Uploads") {
             ProfileField("NID Document") {
                 OutlinedButton(
@@ -611,14 +598,14 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
             }
         }
 
-        // ── Uploaded files viewer ──
+        // 📂 Member File Viewer
         MemberFileViewer(
             files       = legalFiles,
             activeTab   = activeTab,
             onTabChange = { vm.setFileTab(it) }
         )
 
-        // ── Bottom save button ──
+        // ── Bottom save button
         if (!locked) {
             Spacer(Modifier.height(16.dp))
             Row(
@@ -655,7 +642,7 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
     }
 }
 
-// ── Member File Viewer with document preview ───────────────────────────────────
+// ── Member File Viewer with document preview
 
 @Composable
 fun MemberFileViewer(
@@ -715,13 +702,6 @@ fun MemberFileViewer(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
                                 .padding(vertical = 10.dp)
-                                .then(
-                                    if (sel) Modifier.border(
-                                        width  = 0.dp,
-                                        color  = Color.Transparent,
-                                        shape  = RoundedCornerShape(0.dp)
-                                    ) else Modifier
-                                )
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
@@ -818,7 +798,6 @@ fun MemberFileViewer(
                             }
                         }
 
-                        // Preview button (mirrors Next.js "👁 Preview" button)
                         Spacer(Modifier.width(8.dp))
                         Surface(
                             onClick  = { previewFile = file },
@@ -848,7 +827,7 @@ fun MemberFileViewer(
     }
 }
 
-// ── Layout composables ────────────────────────────────────────────────────────
+// ── Layout composables
 
 @Composable
 fun ProfileSection(title: String, content: @Composable ColumnScope.() -> Unit) {
@@ -869,7 +848,7 @@ fun ProfileSection(title: String, content: @Composable ColumnScope.() -> Unit) {
                     fontWeight = FontWeight.Bold,
                     fontSize   = 13.sp,
                     color      = Color(0xFF0F172A),
-                    modifier   = Modifier.padding(12.dp, 11.dp)
+                    modifier = Modifier.padding(12.dp, 11.dp)
                 )
             }
             HorizontalDivider()

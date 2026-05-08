@@ -3,6 +3,7 @@ package com.absis.capitalsync.ui.profile
 
 import android.content.Context
 import android.net.Uri
+import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
@@ -18,9 +19,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.UUID
 import javax.inject.Inject
-import android.util.Base64
 
-// ── GAS Config (same as your Next.js project) ─────────────────────────────────
 private const val GAS_URL = "https://script.google.com/macros/s/AKfycbyQ6L2d3SfAynofqAHfb1jHSn6ZA18pv2ABgXZDLNDR-DHtEyIxYEb8tCCsDBwbk0RF/exec"
 private const val GAS_SECRET = "absis-secret-123"
 
@@ -57,12 +56,10 @@ class ProfileViewModel @Inject constructor(
 
     private val uid: String get() = auth.currentUser?.uid ?: ""
     private var orgId: String = ""
-    // Drive folder ID cached after first upload (same as userData.driveFolderId in JS)
     private var driveFolderId: String? = null
 
     init { loadProfile() }
 
-    // ── Load profile ──────────────────────────────────────────────────────────
     private fun loadProfile() = viewModelScope.launch {
         try {
             val userSnap   = db.collection("users").document(uid).get().await()
@@ -125,7 +122,17 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    // ── Field update ──────────────────────────────────────────────────────────
+    private fun uriToBase64(uri: Uri): String? {
+        return try {
+            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            if (bytes != null) {
+                val base64String = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+                "data:$mimeType;base64,$base64String"
+            } else null
+        } catch (e: Exception) { null }
+    }
+
     fun updateField(key: String, value: String) {
         val f = _form.value ?: return
         _form.value = when (key) {
@@ -163,54 +170,47 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    // ── Photo selection (local preview; uploaded to GAS on save) ──────────────
     fun onPhotoSelected(uri: Uri, isNominee: Boolean) {
         val f = _form.value ?: return
-        _form.value = if (isNominee) f.copy(nomineePhotoUri = uri)
-                      else           f.copy(photoUri = uri)
+        val base64 = uriToBase64(uri)
+        if (base64 != null) {
+            _form.value = if (isNominee) f.copy(nomineePhotoUrl = base64)
+                          else           f.copy(photoUrl = base64)
+        }
     }
 
-    // ── Upload file to Google Drive via GAS ───────────────────────────────────
-    // Mirrors uploadUserFileToGAS() in your Next.js profile/page.js exactly.
     fun uploadFile(uri: Uri, type: String) = viewModelScope.launch {
         val f = _form.value ?: return@launch
         _processing.value = true
         try {
-            val bytes    = readUriBytes(uri)
+            val bytes    = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw Exception("Read failed")
             val base64   = Base64.encodeToString(bytes, Base64.NO_WRAP)
             val mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream"
             val fileName = resolveFileName(uri) ?: "${type}_${UUID.randomUUID()}"
 
             val body = JSONObject().apply {
-                put("action",       "uploadProfileFile")
-                put("secret",       GAS_SECRET)
-                put("file",         base64)
-                put("fileName",     fileName)
-                put("mimeType",     mimeType)
-                put("userId",       f.idNo)
-                put("userName",     f.nameEnglish.ifEmpty { "User" })
-                put("memberId",     f.idNo)
+                put("action", "uploadProfileFile")
+                put("secret", GAS_SECRET)
+                put("file", base64)
+                put("fileName", fileName)
+                put("mimeType", mimeType)
+                put("userId", f.idNo)
+                put("userName", f.nameEnglish.ifEmpty { "User" })
+                put("memberId", f.idNo)
                 put("userFolderId", driveFolderId ?: "")
-                put("type",         type)
+                put("type", type)
             }.toString()
 
-            val request = Request.Builder()
-                .url(GAS_URL)
-                .post(body.toRequestBody("text/plain".toMediaType()))
-                .build()
-
+            val request = Request.Builder().url(GAS_URL).post(body.toRequestBody("text/plain".toMediaType())).build()
             val response = withContext(Dispatchers.IO) { http.newCall(request).execute() }
-            val json     = JSONObject(response.body?.string() ?: "{}")
+            val json = JSONObject(response.body?.string() ?: "{}")
 
-            if (!json.optBoolean("success", false))
-                throw Exception(json.optString("error", "GAS upload failed"))
+            if (!json.optBoolean("success", false)) throw Exception(json.optString("error", "GAS upload failed"))
 
-            // If GAS returned a new folderId, persist it to users/{uid}
             val returnedFolderId = json.optString("folderId", "")
             if (returnedFolderId.isNotEmpty() && returnedFolderId != driveFolderId) {
                 driveFolderId = returnedFolderId
-                db.collection("users").document(uid)
-                    .update("driveFolderId", returnedFolderId).await()
+                db.collection("users").document(uid).update("driveFolderId", returnedFolderId).await()
             }
 
             val category = when (type) {
@@ -218,23 +218,14 @@ class ProfileViewModel @Inject constructor(
                 else -> "Other"
             }
             val newFile = LegalFile(
-                name       = fileName,
-                title      = fileName,
-                url        = json.optString("url", ""),
-                fileId     = json.optString("fileId", ""),
-                mimeType   = mimeType,
-                uploadedBy = "member",
-                uploadedAt = java.time.Instant.now().toString(),
-                category   = category,
-                description = ""
+                name = fileName, title = fileName, url = json.optString("url", ""),
+                fileId = json.optString("fileId", ""), mimeType = mimeType, uploadedBy = "member",
+                uploadedAt = java.time.Instant.now().toString(), category = category, description = ""
             )
 
             val updatedFiles = _legalFiles.value + newFile
             _legalFiles.value = updatedFiles
-
-            // Persist updated file list into Firestore member doc
-            db.collection("organizations/$orgId/members").document(uid)
-                .update("legalFiles", updatedFiles.map { it.toMap() }).await()
+            db.collection("organizations/$orgId/members").document(uid).update("legalFiles", updatedFiles.map { it.toMap() }).await()
 
             showToast("✅ File uploaded to Google Drive")
         } catch (e: Exception) {
@@ -243,89 +234,27 @@ class ProfileViewModel @Inject constructor(
         _processing.value = false
     }
 
-    // ── Photo upload to GAS (base64 image, same flow as file upload) ──────────
-    private suspend fun uploadPhotoToGas(uri: Uri, type: String, f: ProfileForm): String {
-        val bytes    = readUriBytes(uri)
-        val base64   = Base64.encodeToString(bytes, Base64.NO_WRAP)
-        val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
-        val fileName = "photo_${type}_${uid}.jpg"
-
-        val body = JSONObject().apply {
-            put("action",       "uploadProfileFile")
-            put("secret",       GAS_SECRET)
-            put("file",         base64)
-            put("fileName",     fileName)
-            put("mimeType",     mimeType)
-            put("userId",       f.idNo)
-            put("userName",     f.nameEnglish.ifEmpty { "User" })
-            put("memberId",     f.idNo)
-            put("userFolderId", driveFolderId ?: "")
-            put("type",         type)
-        }.toString()
-
-        val request = Request.Builder()
-            .url(GAS_URL)
-            .post(body.toRequestBody("text/plain".toMediaType()))
-            .build()
-
-        val response = withContext(Dispatchers.IO) { http.newCall(request).execute() }
-        val json     = JSONObject(response.body?.string() ?: "{}")
-
-        if (!json.optBoolean("success", false))
-            throw Exception(json.optString("error", "Photo upload failed"))
-
-        val returnedFolderId = json.optString("folderId", "")
-        if (returnedFolderId.isNotEmpty()) {
-            driveFolderId = returnedFolderId
-            db.collection("users").document(uid)
-                .update("driveFolderId", returnedFolderId).await()
-        }
-
-        // Return the Google Drive view URL to store in Firestore
-        return json.optString("url", "")
-    }
-
-    // ── Save / Submit profile ─────────────────────────────────────────────────
     fun saveProfile() = viewModelScope.launch {
         val f = _form.value ?: return@launch
         if (_profileLocked.value) return@launch
         _saving.value = true
         try {
-            // Upload photos via GAS if new ones were selected
-            var photoUrl        = f.photoUrl
-            var nomineePhotoUrl = f.nomineePhotoUrl
-
-            f.photoUri?.let        { photoUrl        = uploadPhotoToGas(it, "photo", f) }
-            f.nomineePhotoUri?.let { nomineePhotoUrl = uploadPhotoToGas(it, "nomineePhoto", f) }
-
             val now = FieldValue.serverTimestamp()
-
-            // Update users/{uid}
             db.collection("users").document(uid).update(
                 mapOf(
-                    "idNo"             to f.idNo,
-                    "nameEnglish"      to f.nameEnglish,
-                    "nameBengali"      to f.nameBengali,
-                    "phone"            to f.phone,
-                    "photoURL"         to photoUrl,
-                    "bloodGroup"       to f.bloodGroup,
-                    "occupation"       to f.occupation,
-                    "profileUpdatedAt" to now
+                    "idNo" to f.idNo, "nameEnglish" to f.nameEnglish, "nameBengali" to f.nameBengali,
+                    "phone" to f.phone, "photoURL" to f.photoUrl, "bloodGroup" to f.bloodGroup,
+                    "occupation" to f.occupation, "profileUpdatedAt" to now
                 )
             ).await()
 
-            // Update organizations/{orgId}/members/{uid}
-            db.collection("organizations/$orgId/members").document(uid)
-                .set(
-                    f.toFirestoreMap(photoUrl, nomineePhotoUrl) + mapOf(
-                        "profileUpdatedAt" to now,
-                        "profileSubmitted" to true
-                    ),
-                    SetOptions.merge()
-                ).await()
+            db.collection("organizations/$orgId/members").document(uid).set(
+                f.toFirestoreMap(f.photoUrl, f.nomineePhotoUrl) + mapOf("profileUpdatedAt" to now, "profileSubmitted" to true),
+                SetOptions.merge()
+            ).await()
 
             _profileLocked.value = true
-            _lastUpdated.value   = "just now"
+            _lastUpdated.value = "just now"
             showToast("✅ Profile saved! Changes locked.")
         } catch (e: Exception) {
             showToast(e.message ?: "Save failed", true)
@@ -334,12 +263,6 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun setFileTab(tab: String) { _fileTab.value = tab }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private fun readUriBytes(uri: Uri): ByteArray =
-        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: throw Exception("Cannot read file")
 
     private fun resolveFileName(uri: Uri): String? {
         val cursor = context.contentResolver.query(uri, null, null, null, null)
@@ -351,26 +274,19 @@ class ProfileViewModel @Inject constructor(
 
     private fun showToast(msg: String, isError: Boolean = false) {
         _toast.value = ToastState(msg, isError)
-        viewModelScope.launch {
-            kotlinx.coroutines.delay(4000)
-            _toast.value = null
-        }
+        viewModelScope.launch { delay(4000); _toast.value = null }
     }
 
     private fun formatTimestamp(ts: Any?): String? {
         if (ts == null) return null
         return try {
             when (ts) {
-                is com.google.firebase.Timestamp ->
-                    android.text.format.DateFormat
-                        .format("dd MMM yyyy, HH:mm", ts.toDate()).toString()
+                is com.google.firebase.Timestamp -> android.text.format.DateFormat.format("dd MMM yyyy, HH:mm", ts.toDate()).toString()
                 is String -> ts
                 else -> ts.toString()
             }
         } catch (e: Exception) { null }
     }
-
-    // ── Map conversions ───────────────────────────────────────────────────────
 
     private fun Map<String, Any>.toLegalFile() = LegalFile(
         name        = this["name"] as? String ?: "",
@@ -386,27 +302,19 @@ class ProfileViewModel @Inject constructor(
 
     private fun LegalFile.toMap() = mapOf(
         "name" to name, "title" to title, "url" to url, "fileId" to fileId,
-        "mimeType" to mimeType, "uploadedBy" to uploadedBy,
-        "uploadedAt" to uploadedAt, "category" to category,
-        "description" to description
+        "mimeType" to mimeType, "uploadedBy" to uploadedBy, "uploadedAt" to uploadedAt,
+        "category" to category, "description" to description
     )
 
     private fun ProfileForm.toFirestoreMap(photoUrl: String, nomineePhotoUrl: String) = mapOf(
-        "nameEnglish" to nameEnglish, "nameBengali" to nameBengali,
-        "fatherNameEn" to fatherNameEn, "fatherNameBn" to fatherNameBn,
-        "motherNameEn" to motherNameEn, "motherNameBn" to motherNameBn,
-        "dob" to dob, "nid" to nid, "bloodGroup" to bloodGroup,
-        "maritalStatus" to maritalStatus, "spouseNameEn" to spouseNameEn,
-        "spouseNameBn" to spouseNameBn, "education" to education,
-        "occupation" to occupation, "monthlyIncome" to monthlyIncome,
-        "phone" to phone, "alternativePhone" to alternativePhone,
-        "presentAddressEn" to presentAddressEn, "presentAddressBn" to presentAddressBn,
-        "permanentAddressEn" to permanentAddressEn, "permanentAddressBn" to permanentAddressBn,
-        "heirNameEn" to heirNameEn, "heirNameBn" to heirNameBn,
-        "heirRelation" to heirRelation, "heirFatherHusbandEn" to heirFatherHusbandEn,
-        "heirFatherHusbandBn" to heirFatherHusbandBn, "heirNID" to heirNID,
-        "heirPhone" to heirPhone, "heirAddressEn" to heirAddressEn,
-        "heirAddressBn" to heirAddressBn, "photoURL" to photoUrl,
+        "nameEnglish" to nameEnglish, "nameBengali" to nameBengali, "fatherNameEn" to fatherNameEn, "fatherNameBn" to fatherNameBn,
+        "motherNameEn" to motherNameEn, "motherNameBn" to motherNameBn, "dob" to dob, "nid" to nid, "bloodGroup" to bloodGroup,
+        "maritalStatus" to maritalStatus, "spouseNameEn" to spouseNameEn, "spouseNameBn" to spouseNameBn, "education" to education,
+        "occupation" to occupation, "monthlyIncome" to monthlyIncome, "phone" to phone, "alternativePhone" to alternativePhone,
+        "presentAddressEn" to presentAddressEn, "presentAddressBn" to presentAddressBn, "permanentAddressEn" to permanentAddressEn,
+        "permanentAddressBn" to permanentAddressBn, "heirNameEn" to heirNameEn, "heirNameBn" to heirNameBn, "heirRelation" to heirRelation,
+        "heirFatherHusbandEn" to heirFatherHusbandEn, "heirFatherHusbandBn" to heirFatherHusbandBn, "heirNID" to heirNID,
+        "heirPhone" to heirPhone, "heirAddressEn" to heirAddressEn, "heirAddressBn" to heirAddressBn, "photoURL" to photoUrl,
         "nomineePhotoURL" to nomineePhotoUrl, "idNo" to idNo
     )
 }
