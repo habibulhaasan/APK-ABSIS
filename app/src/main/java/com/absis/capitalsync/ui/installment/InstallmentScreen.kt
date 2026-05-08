@@ -157,11 +157,11 @@ fun InstallmentScreen(
                                             method,
                                             fontSize   = 12.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color      = Color(0xFF475569)
+                                            color      = Color(0xFF000000)
                                         )
                                         if (acc.label.isNotEmpty()) {
                                             Surface(
-                                                color = Color(0xFFF0FDF4),
+                                                color = Color(0xFFFFFFFF),
                                                 shape = RoundedCornerShape(4.dp)
                                             ) {
                                                 Text(
@@ -372,8 +372,11 @@ fun SpecialSubsCard(
                     Surface(
                         onClick = { onSelect(if (isSel) null else sub) },
                         shape = RoundedCornerShape(10.dp),
-                        color = if (isSel) Color(0xFFEFF6FF) else Color.White,
-                        border = BorderStroke(if (isSel) 2.dp else 1.dp, if (isSel) Color(0xFF2563EB) else Color(0xFFE2E8F0)),
+                        color = if (isSel) Color(0xFFFFFFFF) else Color.White,
+                        border = BorderStroke(if (isSel) 2.dp else 1.dp, if (isSel) Color(0xFF2563EB) else Color(
+                            0xFFB9BCC2
+                        )
+                        ),
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                     ) {
                         Column(Modifier.padding(14.dp, 14.dp)) {
@@ -494,7 +497,7 @@ fun PaymentMethodCard(
             // Account picker (when method has multiple accounts)
             if (selectedMethod != "Cash" && methodAccounts.size > 1) {
                 Text("Which account did you send to? *", fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                    color = Color(0xFF64748B), modifier = Modifier.padding(bottom = 8.dp))
+                    color = Color(0xFFE8F5FF), modifier = Modifier.padding(bottom = 8.dp))
                 methodAccounts.forEach { acc ->
                     val isSel = selectedAccount?.id == acc.id
                     Surface(
@@ -512,7 +515,8 @@ fun PaymentMethodCard(
                                 Text(acc.label, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
                                     color = if (isSel) Color(0xFF1D4ED8) else Color(0xFF0F172A))
                                 Text(acc.number, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                    fontSize = 12.sp, color = Color(0xFF475569))
+                                    fontSize = 12.sp, color = Color(0xFF030000)
+                                )
                             }
                         }
                     }
@@ -546,7 +550,7 @@ fun PaymentMethodCard(
                             Text(
                                 methodAccounts[0].label,
                                 fontSize = 11.sp,
-                                color    = Color(0xFF64748B)
+                                color    = Color(0xFF424B57)
                             )
                         }
                     }
@@ -565,7 +569,7 @@ fun PaymentMethodCard(
             // TxID
             if (selectedMethod.isNotEmpty() && selectedMethod != "Cash") {
                 Text("Transaction ID (TxID) *", fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                    color = Color(0xFF64748B), modifier = Modifier.padding(bottom = 4.dp))
+                    color = Color(0xFFFFFFFF), modifier = Modifier.padding(bottom = 4.dp))
                 OutlinedTextField(
                     value = txId, onValueChange = onTxIdChange,
                     placeholder = { Text("Paste your $selectedMethod transaction ID") },

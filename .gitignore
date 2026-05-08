@@ -16,3 +16,4 @@ local.properties
 google-services.json
 .idea
 *.log
+node_modules
