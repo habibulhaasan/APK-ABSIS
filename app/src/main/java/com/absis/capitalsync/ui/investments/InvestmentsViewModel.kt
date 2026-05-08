@@ -1,4 +1,3 @@
-// ui/investments/InvestmentsViewModel.kt
 package com.absis.capitalsync.ui.investments
 
 import androidx.lifecycle.ViewModel
@@ -34,7 +33,6 @@ class InvestmentsViewModel @Inject constructor() : ViewModel() {
     private val uid: String get() = auth.currentUser?.uid ?: ""
     var orgId: String = ""; private set
 
-    // capital per member uid — used for share calculations
     private val capitalMap = mutableMapOf<String, Double>()
     private var feeInAcct  = false
 
@@ -42,7 +40,13 @@ class InvestmentsViewModel @Inject constructor() : ViewModel() {
 
     init { bootstrap() }
 
-    // ── Bootstrap: load org context + payments, then listen to projects ────────
+    fun refresh() {
+        _loading.value = true
+        projectsListener?.remove()
+        capitalMap.clear()
+        bootstrap()
+    }
+
     private fun bootstrap() = viewModelScope.launch {
         try {
             val userSnap = db.collection("users").document(uid).get().await()
@@ -51,7 +55,6 @@ class InvestmentsViewModel @Inject constructor() : ViewModel() {
             val orgSnap = db.collection("organizations").document(orgId).get().await()
             feeInAcct   = orgSnap.getBoolean("settings.gatewayFeeInAccounting") ?: false
 
-            // Load all payments to build capitalMap
             val paySnap = db.collection("organizations/$orgId/investments").get().await()
             paySnap.documents.forEach { doc ->
                 val status  = doc.getString("status") ?: return@forEach
@@ -66,15 +69,12 @@ class InvestmentsViewModel @Inject constructor() : ViewModel() {
             }
             _myCapital.value = capitalMap[uid] ?: 0.0
 
-            // Real-time listener on projects
             projectsListener = db.collection("organizations/$orgId/investmentProjects")
                 .orderBy("createdAt", Query.Direction.DESCENDING)
                 .addSnapshotListener { snap, _ ->
                     if (snap == null) return@addSnapshotListener
-                    _projects.value = snap.documents.mapNotNull { doc ->
-                        doc.toProject()
-                    }
-                    _loading.value = false
+                    _projects.value = snap.documents.mapNotNull { it.toProject() }
+                    _loading.value  = false
                 }
 
         } catch (e: Exception) {
@@ -82,13 +82,10 @@ class InvestmentsViewModel @Inject constructor() : ViewModel() {
         }
     }
 
-    // ── Compute my share for a single project ─────────────────────────────────
-    // Mirrors getMyShare() in investments/page.js exactly
     fun getMyShare(project: Project): MyShare? {
         val myCapital = capitalMap[uid] ?: 0.0
         if (myCapital <= 0) return null
 
-        // Determine if user participates
         val participatingMembers = project.participatingMembers
         val allParticipate = participatingMembers == null || participatingMembers == "all"
 
@@ -101,19 +98,18 @@ class InvestmentsViewModel @Inject constructor() : ViewModel() {
 
         if (!allParticipate && participantIds?.contains(uid) == false) return null
 
-        // Total capital of participating members only
         val totalCapital = capitalMap.entries
             .filter { (k, _) -> allParticipate || participantIds?.contains(k) == true }
             .sumOf { it.value }
 
         if (totalCapital <= 0) return null
 
-        val capShare = myCapital / totalCapital
+        val capShare   = myCapital / totalCapital
         val isPeriodic = project.returnType == "periodic"
-        val netProfit = when {
+        val netProfit  = when {
             isPeriodic -> project.totalReturns - project.totalExpenses
             project.actualReturnAmount != null ->
-                (project.actualReturnAmount) - project.investedAmount
+                project.actualReturnAmount - project.investedAmount
             else -> 0.0
         }
 
@@ -126,7 +122,6 @@ class InvestmentsViewModel @Inject constructor() : ViewModel() {
         )
     }
 
-    // ── Load transactions for selected project ────────────────────────────────
     fun loadTransactions(projectId: String, orgId: String) = viewModelScope.launch {
         _transactions.value = emptyList()
         try {
@@ -143,9 +138,9 @@ class InvestmentsViewModel @Inject constructor() : ViewModel() {
                     id          = doc.id,
                     kind        = "return",
                     description = doc.getString("description") ?: "",
-                    category    = doc.getString("category") ?: "",
-                    amount      = doc.getDouble("amount") ?: 0.0,
-                    date        = doc.getString("date") ?: "",
+                    category    = doc.getString("category")    ?: "",
+                    amount      = doc.getDouble("amount")      ?: 0.0,
+                    date        = doc.getString("date")        ?: "",
                     distributedInDistributionId = doc.getString("distributedInDistributionId")
                 )
             }
@@ -154,51 +149,48 @@ class InvestmentsViewModel @Inject constructor() : ViewModel() {
                     id          = doc.id,
                     kind        = "expense",
                     description = doc.getString("description") ?: "",
-                    category    = doc.getString("category") ?: "",
-                    amount      = doc.getDouble("amount") ?: 0.0,
-                    date        = doc.getString("date") ?: "",
+                    category    = doc.getString("category")    ?: "",
+                    amount      = doc.getDouble("amount")      ?: 0.0,
+                    date        = doc.getString("date")        ?: "",
                     distributedInDistributionId = null
                 )
             }
 
-            // Merge + sort by date descending (same as JS .sort())
             _transactions.value = (returns + expenses).sortedByDescending { it.date }
 
         } catch (_: Exception) {}
     }
 
-    fun setFilter(f: String)          { _filter.value = f }
-    fun selectProject(p: Project?)    { _selectedProject.value = p }
+    fun setFilter(f: String)       { _filter.value = f }
+    fun selectProject(p: Project?) { _selectedProject.value = p }
 
     override fun onCleared() {
         super.onCleared()
         projectsListener?.remove()
     }
 
-    // ── Firestore DocumentSnapshot → Project ──────────────────────────────────
     private fun DocumentSnapshot.toProject(): Project? {
-        val id = this.id
         return try {
             Project(
-                id                  = id,
-                title               = getString("title") ?: return null,
-                description         = getString("description") ?: "",
-                type                = getString("type") ?: "",
-                sector              = getString("sector") ?: "",
-                status              = getString("status") ?: "proposed",
-                returnType          = getString("returnType") ?: "lumpsum",
-                investedAmount      = getDouble("investedAmount") ?: 0.0,
-                expectedReturnPct   = getDouble("expectedReturnPct") ?: 0.0,
-                actualReturnAmount  = getDouble("actualReturnAmount"),
-                profit              = getDouble("profit"),
-                totalReturns        = getDouble("totalReturns") ?: 0.0,
-                totalExpenses       = getDouble("totalExpenses") ?: 0.0,
-                startDate           = getString("startDate") ?: "",
-                completedDate       = getString("completedDate") ?: "",
-                notes               = getString("notes") ?: "",
+                id                   = this.id,
+                title                = getString("title")              ?: return null,
+                description          = getString("description")        ?: "",
+                type                 = getString("type")               ?: "",
+                sector               = getString("sector")             ?: "",
+                status               = getString("status")             ?: "proposed",
+                returnType           = getString("returnType")         ?: "lumpsum",
+                investedAmount       = getDouble("investedAmount")     ?: 0.0,
+                expectedReturnPct    = getDouble("expectedReturnPct")  ?: 0.0,
+                actualReturnAmount   = getDouble("actualReturnAmount"),
+                profit               = getDouble("profit"),
+                totalReturns         = getDouble("totalReturns")       ?: 0.0,
+                totalExpenses        = getDouble("totalExpenses")      ?: 0.0,
+                startDate            = getString("startDate")          ?: "",
+                completedDate        = getString("completedDate")      ?: "",
+                notes                = getString("notes")              ?: "",
                 participatingMembers = get("participatingMembers"),
-                fundSources         = get("fundSources") as? Map<String, Double>,
-                fundSource          = getString("fundSource") ?: ""
+                fundSources          = get("fundSources") as? Map<String, Double>,
+                fundSource           = getString("fundSource")         ?: ""
             )
         } catch (e: Exception) { null }
     }

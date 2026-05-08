@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
         android:name=".CapitalSyncApp"
@@ -24,13 +25,11 @@
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
 
-            <!-- Standard launcher intent -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- Firebase password reset deep link -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
@@ -40,7 +39,16 @@
                     android:host="absis-capital-sync.firebaseapp.com"
                     android:pathPrefix="/__/auth/action"/>
             </intent-filter>
-
         </activity>
+
+        <!-- FCM Service -->
+        <service
+            android:name=".core.notifications.CapitalSyncMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT"/>
+            </intent-filter>
+        </service>
+
     </application>
 </manifest>

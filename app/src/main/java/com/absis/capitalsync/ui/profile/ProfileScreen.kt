@@ -20,6 +20,10 @@ import androidx.compose.ui.unit.*
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.TextFieldColors
+import androidx.compose.runtime.Composable
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 val BLOOD_GROUPS    = listOf("A+","A-","B+","B-","AB+","AB-","O+","O-")
 val MARITAL_STATUS  = listOf("Single","Married","Divorced","Widowed")

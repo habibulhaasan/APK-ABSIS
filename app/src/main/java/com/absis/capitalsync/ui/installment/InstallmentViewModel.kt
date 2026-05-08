@@ -391,6 +391,11 @@ class InstallmentViewModel @Inject constructor() : ViewModel() {
         recalculate()
     }
 
+    fun refresh() {
+        subsListener?.remove()
+        bootstrap()
+    }
+
     // ── Private helpers ────────────────────────────────────────────────────────
 
     private fun buildMonthList(startDate: String): List<String> {

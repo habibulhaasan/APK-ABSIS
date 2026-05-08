@@ -16,6 +16,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import androidx.hilt.navigation.compose.hiltViewModel
 
+import androidx.compose.runtime.Composable
+
 // ── Data models ───────────────────────────────────────────────────────────────
 
 data class Project(

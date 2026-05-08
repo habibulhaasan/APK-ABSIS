@@ -141,17 +141,46 @@ fun InstallmentScreen(
                     uiState.paymentAccounts.forEach { (method, accounts) ->
                         accounts.filter { it.enabled }.forEach { acc ->
                             Surface(
-                                shape = RoundedCornerShape(8.dp), color = Color.White,
-                                border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
+                                shape    = RoundedCornerShape(8.dp),
+                                color    = Color.White,
+                                border   = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 6.dp)
                             ) {
-                                Row(Modifier.padding(8.dp, 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Column {
-                                        Text(method, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                        Text(acc.label, fontSize = 11.sp, color = Color(0xFF94A3B8))
+                                Column(Modifier.padding(10.dp)) {
+                                    Row(
+                                        verticalAlignment     = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            method,
+                                            fontSize   = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color      = Color(0xFF475569)
+                                        )
+                                        if (acc.label.isNotEmpty()) {
+                                            Surface(
+                                                color = Color(0xFFF0FDF4),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    acc.label,
+                                                    fontSize = 10.sp,
+                                                    color    = Color(0xFF15803D),
+                                                    modifier = Modifier.padding(5.dp, 2.dp)
+                                                )
+                                            }
+                                        }
                                     }
-                                    Text(acc.number, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        acc.number,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        fontSize   = 14.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color      = Color(0xFF0F172A),
+                                    )
                                 }
                             }
                         }
@@ -493,12 +522,34 @@ fun PaymentMethodCard(
 
             // Single account info
             if (selectedMethod != "Cash" && methodAccounts.size == 1) {
-                Surface(color = Color(0xFFF0FDF4), shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)) {
-                    Text("Send to: ${methodAccounts[0].number} (${methodAccounts[0].label})",
-                        fontSize = 12.sp, color = Color(0xFF15803D), fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(12.dp))
+                Surface(
+                    color    = Color(0xFFF0FDF4),
+                    shape    = RoundedCornerShape(8.dp),
+                    border   = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
+                ) {
+                    Column(Modifier.padding(12.dp, 10.dp)) {
+                        Text(
+                            "Send to:",
+                            fontSize   = 11.sp,
+                            color      = Color(0xFF15803D),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            methodAccounts[0].number,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            fontSize   = 15.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color      = Color(0xFF0F172A)
+                        )
+                        if (methodAccounts[0].label.isNotEmpty()) {
+                            Text(
+                                methodAccounts[0].label,
+                                fontSize = 11.sp,
+                                color    = Color(0xFF64748B)
+                            )
+                        }
+                    }
                 }
             }
 

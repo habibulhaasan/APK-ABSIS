@@ -1,5 +1,6 @@
 package com.absis.capitalsync
 
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -10,27 +11,37 @@ import com.absis.capitalsync.core.navigation.Screen
 import com.absis.capitalsync.ui.shell.MainShell
 import com.absis.capitalsync.ui.theme.CapitalSyncTheme
 import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         FirebaseApp.initializeApp(this)
         enableEdgeToEdge()
 
-        val startRoute = intent?.data?.let { uri ->
-            val mode    = uri.getQueryParameter("mode")
-            val oobCode = uri.getQueryParameter("oobCode") ?: ""
-            if (mode == "resetPassword" && oobCode.isNotEmpty())
-                "reset-password/$oobCode"
-            else null
-        } ?: Screen.Login.route
+        // Request notification permission on Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requestPermissions(
+                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001
+            )
+        }
 
         setContent {
             CapitalSyncTheme {
                 val navController = rememberNavController()
+
+                val startRoute: String = when {
+                    intent?.data?.getQueryParameter("mode") == "resetPassword" -> {
+                        val oobCode = intent.data?.getQueryParameter("oobCode") ?: ""
+                        "reset-password/$oobCode"
+                    }
+                    FirebaseAuth.getInstance().currentUser != null ->
+                        Screen.Dashboard.route
+                    else -> Screen.Login.route
+                }
+
                 MainShell(navController = navController) { padding ->
                     AppNavGraph(
                         navController    = navController,

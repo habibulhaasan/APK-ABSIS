@@ -17,6 +17,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import java.text.NumberFormat
 import java.util.Locale
 
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.TextFieldColors
+import androidx.compose.runtime.Composable
+
 private fun fmtC(n: Number) =
     "৳${NumberFormat.getNumberInstance(Locale.US).format(n.toLong())}"
 

@@ -1,4 +1,3 @@
-// ui/expenses/ExpensesViewModel.kt
 package com.absis.capitalsync.ui.expenses
 
 import androidx.lifecycle.ViewModel
@@ -36,13 +35,18 @@ class ExpensesViewModel @Inject constructor() : ViewModel() {
 
     init { bootstrap() }
 
+    fun refresh() {
+        _loading.value = true
+        listener?.remove()
+        bootstrap()
+    }
+
     private fun bootstrap() = viewModelScope.launch {
         try {
-            val uid     = auth.currentUser?.uid ?: return@launch
-            val userSnap= db.collection("users").document(uid).get().await()
-            val orgId   = userSnap.getString("activeOrgId") ?: return@launch
+            val uid      = auth.currentUser?.uid ?: return@launch
+            val userSnap = db.collection("users").document(uid).get().await()
+            val orgId    = userSnap.getString("activeOrgId") ?: return@launch
 
-            // Real-time listener — mirrors onSnapshot in expenses/page.js
             listener = db.collection("organizations/$orgId/expenses")
                 .orderBy("date", Query.Direction.DESCENDING)
                 .addSnapshotListener { snap, _ ->
@@ -50,11 +54,11 @@ class ExpensesViewModel @Inject constructor() : ViewModel() {
                     _expenses.value = snap.documents.map { doc ->
                         ExpenseItem(
                             id       = doc.id,
-                            date     = doc.getString("date") ?: "—",
-                            title    = doc.getString("title") ?: "—",
+                            date     = doc.getString("date")     ?: "—",
+                            title    = doc.getString("title")    ?: "—",
                             category = doc.getString("category") ?: "—",
-                            amount   = doc.getDouble("amount") ?: 0.0,
-                            notes    = doc.getString("notes") ?: "—",
+                            amount   = doc.getDouble("amount")   ?: 0.0,
+                            notes    = doc.getString("notes")    ?: "—",
                         )
                     }
                     _loading.value = false
