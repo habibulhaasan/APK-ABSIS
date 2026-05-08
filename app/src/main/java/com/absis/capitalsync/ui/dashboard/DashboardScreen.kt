@@ -10,7 +10,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.absis.capitalsync.ui.common.PullToRefreshBox
+// ── Change this import ──
+import com.absis.capitalsync.ui.common.PullToRefreshLayout
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -31,7 +32,8 @@ fun DashboardScreen(
 
     val firstName = (user?.get("nameEnglish") as? String ?: "Member").split(" ").first()
 
-    PullToRefreshBox(
+    // ── Updated to use PullToRefreshLayout ──
+    PullToRefreshLayout(
         isRefreshing = loading,
         onRefresh    = { vm.refresh() },
         modifier     = Modifier.fillMaxSize()
@@ -88,7 +90,7 @@ fun DashboardScreen(
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
-            if (loading) {
+            if (loading && data == null) {
                 Box(
                     Modifier.fillMaxWidth().padding(60.dp),
                     contentAlignment = Alignment.Center
@@ -172,7 +174,7 @@ fun DashboardScreen(
 
                 // ── Stats grid ──
                 Spacer(Modifier.height(4.dp))
-                StatGrid(d, onNavigateToInstallment, onNavigateToLoans)
+                StatGrid(d)
 
                 // ── Latest distribution ──
                 d.latestDist?.let { dist ->
@@ -271,7 +273,7 @@ fun DashboardScreen(
                                         StatusBadge(p.status)
                                     }
                                 }
-                                if (i < 4) HorizontalDivider(color = Color(0xFFF8FAFC))
+                                if (i < 4 && i < d.myPayments.lastIndex) HorizontalDivider(color = Color(0xFFF8FAFC))
                             }
                         }
                     }
@@ -332,7 +334,7 @@ fun BannerCard(
 }
 
 @Composable
-fun StatGrid(d: DashboardData, onInstallment: () -> Unit, onLoans: () -> Unit) {
+fun StatGrid(d: DashboardData) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         StatCard(
             label     = "My Capital",

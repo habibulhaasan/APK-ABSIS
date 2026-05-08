@@ -13,18 +13,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import androidx.hilt.navigation.compose.hiltViewModel
-// ── Imports for new documentation ──
-import com.absis.capitalsync.ui.common.PullToRefreshBox
-
+// ── Use the custom layout wrapper ──
+import com.absis.capitalsync.ui.common.PullToRefreshLayout
 
 @Composable
 fun ExpensesScreen(vm: ExpensesViewModel = hiltViewModel()) {
     val items by vm.expenses.collectAsState()
-    val loading by vm.loading.collectAsState() // Required for PullToRefresh
+    val loading by vm.loading.collectAsState()
     val total = items.sumOf { it.amount }
 
-    // ── Step 1: Wrap root with PullToRefreshBox ──
-    PullToRefreshBox(
+    // ── Using the Layout wrapper instead of the internal Box ──
+    PullToRefreshLayout(
         isRefreshing = loading,
         onRefresh    = { vm.refresh() },
         modifier     = Modifier.fillMaxSize()
@@ -75,7 +74,7 @@ fun ExpensesScreen(vm: ExpensesViewModel = hiltViewModel()) {
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .background(if (i % 2 == 0) Color.White else Color(0xFFFAFAFA)) // Premium striped effect
+                                .background(if (i % 2 == 0) Color.White else Color(0xFFFAFAFA))
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
