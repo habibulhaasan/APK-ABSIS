@@ -86,7 +86,7 @@ fun DashboardScreen(
             Text(
                 vm.orgName,
                 fontSize = 14.sp,
-                color    = Color(0xFF64748B),
+                color    = Color(0xFF000000),
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
@@ -412,7 +412,7 @@ fun StatCard(
 fun MiniStat(label: String, value: String, valueColor: Color, bg: Color, modifier: Modifier = Modifier) {
     Surface(color = bg, shape = RoundedCornerShape(8.dp), modifier = modifier) {
         Column(Modifier.padding(10.dp)) {
-            Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF64748B))
+            Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF000000))
             Spacer(Modifier.height(3.dp))
             Text(value, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = valueColor)
         }

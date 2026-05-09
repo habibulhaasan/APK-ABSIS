@@ -1,3 +1,4 @@
+// app/src/main/java/com/absis/capitalsync/core/notifications/CapitalSyncMessagingService.kt
 package com.absis.capitalsync.core.notifications
 
 import android.app.NotificationChannel
@@ -22,6 +23,13 @@ class CapitalSyncMessagingService : FirebaseMessagingService() {
     companion object {
         const val CHANNEL_GENERAL     = "general_notifications"
         const val CHANNEL_INSTALLMENT = "installment_reminders"
+        const val CHANNEL_PAYMENT     = "payment_notifications"
+        const val CHANNEL_LOAN        = "loan_notifications"
+
+        // Stable notification IDs
+        const val NOTIF_ID_INSTALLMENT = 1001
+        const val NOTIF_ID_PAYMENT     = 1002
+        const val NOTIF_ID_LOAN        = 1003
 
         fun createChannels(context: Context) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -46,24 +54,90 @@ class CapitalSyncMessagingService : FirebaseMessagingService() {
                         enableVibration(true)
                     }
                 )
+
+                nm.createNotificationChannel(
+                    NotificationChannel(
+                        CHANNEL_PAYMENT,
+                        "Payment Notifications",
+                        NotificationManager.IMPORTANCE_HIGH
+                    ).apply {
+                        description = "Payment verification updates"
+                        enableVibration(true)
+                    }
+                )
+
+                nm.createNotificationChannel(
+                    NotificationChannel(
+                        CHANNEL_LOAN,
+                        "Loan Notifications",
+                        NotificationManager.IMPORTANCE_HIGH
+                    ).apply {
+                        description = "Loan status updates"
+                        enableVibration(true)
+                    }
+                )
             }
+        }
+
+        /**
+         * Cancel the sticky installment reminder notification.
+         * Called from InstallmentReminderWorker when payment is detected as paid.
+         */
+        fun cancelInstallmentReminder(context: Context) {
+            NotificationManagerCompat.from(context).cancel(NOTIF_ID_INSTALLMENT)
         }
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
+
         val title = message.notification?.title ?: message.data["title"] ?: "Capital Sync"
-        val body  = message.notification?.body  ?: message.data["body"]  ?: ""
+        val body  = message.notification?.body  ?: message.data["body"]
+                 ?: message.data["message"]     ?: ""
         val type  = message.data["type"] ?: "general"
 
-        showNotification(
-            context   = applicationContext,
-            title     = title,
-            body      = body,
-            channelId = if (type == "installment") CHANNEL_INSTALLMENT else CHANNEL_GENERAL,
-            sticky    = type == "installment",
-            notifId   = type.hashCode(),
-        )
+        when (type) {
+            "installment_reminder" -> {
+                showNotification(
+                    context   = applicationContext,
+                    title     = title,
+                    body      = body,
+                    channelId = CHANNEL_INSTALLMENT,
+                    sticky    = true,
+                    notifId   = NOTIF_ID_INSTALLMENT,
+                )
+            }
+            "payment_verified" -> {
+                showNotification(
+                    context   = applicationContext,
+                    title     = title,
+                    body      = body,
+                    channelId = CHANNEL_PAYMENT,
+                    sticky    = false,
+                    notifId   = NOTIF_ID_PAYMENT,
+                )
+            }
+            "loan_update" -> {
+                showNotification(
+                    context   = applicationContext,
+                    title     = title,
+                    body      = body,
+                    channelId = CHANNEL_LOAN,
+                    sticky    = false,
+                    notifId   = NOTIF_ID_LOAN,
+                )
+            }
+            else -> {
+                showNotification(
+                    context   = applicationContext,
+                    title     = title,
+                    body      = body,
+                    channelId = CHANNEL_GENERAL,
+                    sticky    = false,
+                    notifId   = System.currentTimeMillis().toInt(),
+                )
+            }
+        }
     }
 
     override fun onNewToken(token: String) {
