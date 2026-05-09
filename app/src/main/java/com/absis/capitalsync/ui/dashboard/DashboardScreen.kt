@@ -260,16 +260,19 @@ fun DashboardScreen(
                                     Modifier
                                         .fillMaxWidth()
                                         .background(if (i % 2 == 0) Color.White else Color(0xFFFAFAFA))
-                                        .padding(10.dp),
+                                        // 2. Tighter vertical padding to reduce row height
+                                        .padding(horizontal = 12.dp, vertical = 6.dp), 
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment     = Alignment.CenterVertically
                                 ) {
                                     Column {
-                                        Text(p.date, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                        Text(p.date, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                        Spacer(Modifier.height(2.dp))
                                         Text(p.method, fontSize = 11.sp, color = Color(0xFF94A3B8))
                                     }
                                     Column(horizontalAlignment = Alignment.End) {
                                         Text(fmt(p.amount), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        Spacer(Modifier.height(2.dp))
                                         StatusBadge(p.status)
                                     }
                                 }

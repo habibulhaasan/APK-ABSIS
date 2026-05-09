@@ -10,6 +10,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
+import com.google.firebase.Timestamp
+import java.text.SimpleDateFormat
+import java.util.Locale
+
 data class PaymentItem(val date: String, val method: String, val amount: Double, val status: String)
 data class RepaymentItem(val dueDate: String, val amount: Double, val loanPurpose: String)
 data class DistributionData(val periodLabel: String, val grossProfit: Double, val distributableProfit: Double, val totalCapital: Double)
@@ -108,8 +112,16 @@ class DashboardViewModel @Inject constructor() : ViewModel() {
         val outstanding = activeLoans.sumOf { (it["outstandingBalance"] as? Number)?.toDouble() ?: 0.0 }
 
         val pmtItems = myPayments.take(5).map {
+            // 1. Safely extract and format the Firebase Timestamp
+            val rawDate = it["createdAt"]
+            val dateStr = if (rawDate is Timestamp) {
+                SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(rawDate.toDate())
+            } else {
+                rawDate?.toString() ?: "—"
+            }
+
             PaymentItem(
-                date   = it["createdAt"]?.toString() ?: "—",
+                date   = dateStr,
                 method = it["method"] as? String ?: "—",
                 amount = (it["amount"] as? Number)?.toDouble() ?: 0.0,
                 status = it["status"] as? String ?: "—"
