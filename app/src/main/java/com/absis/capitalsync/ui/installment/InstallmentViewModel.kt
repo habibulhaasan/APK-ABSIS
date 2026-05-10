@@ -1,8 +1,12 @@
 // ui/installment/InstallmentViewModel.kt
 package com.absis.capitalsync.ui.installment
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.absis.capitalsync.util.ReceiptUploadResult
+import com.absis.capitalsync.util.uploadReceipt
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -12,6 +16,8 @@ import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
+
+// ── UI State ──────────────────────────────────────────────────────────────────
 
 data class InstallmentUiState(
     val payMode: PayMode                                   = PayMode.MONTHLY,
@@ -25,6 +31,12 @@ data class InstallmentUiState(
     val paidSpecialIds: Set<String>                        = emptySet(),
     val txId: String                                       = "",
     val customSpecialAmount: String                        = "",
+    // ── Receipt ───────────────────────────────────────────────────────────────
+    val receiptUri: Uri?                                   = null,
+    val receiptName: String                                = "",
+    val receiptMimeType: String                            = "",
+    val isUploadingReceipt: Boolean                        = false,
+    // ─────────────────────────────────────────────────────────────────────────
     val baseAmount: Double                                 = 0.0,
     val penalty: Double                                    = 0.0,
     val feeRate: Double                                    = 0.0,
@@ -39,14 +51,16 @@ data class InstallmentUiState(
     val orgLogoUrl: String?                                = null,
     val missedCount: Int                                   = 0,
     val isLatePayer: Boolean                               = false,
-    val reregistrationPending: Boolean                     = false,   // renamed: no typo
-    val reregistrationGranted: Boolean                     = false,   // renamed: no typo
+    val reregistrationPending: Boolean                     = false,
+    val reregistrationGranted: Boolean                     = false,
     val isImpersonating: Boolean                           = false,
     val loading: Boolean                                   = false,
     val success: Boolean                                   = false,
+    val errorMessage: String?                              = null,
 )
 
-// Suppress spell-check for domain-specific payment method names
+// ── ViewModel ─────────────────────────────────────────────────────────────────
+
 @Suppress("SpellCheckingInspection")
 private val DEFAULT_METHODS = listOf("bKash", "Nagad", "Rocket", "Bank Transfer", "Cash")
 
@@ -71,57 +85,68 @@ class InstallmentViewModel @Inject constructor() : ViewModel() {
     private var subsListener: ListenerRegistration? = null
     private var gatewayFees: Map<String, Map<String, Any>> = emptyMap()
 
+    // Cached for receipt upload
+    private var cachedMemberId: String   = ""
+    private var cachedMemberName: String = ""
+
     init { bootstrap() }
 
     // ── Bootstrap ─────────────────────────────────────────────────────────────
+
     private fun bootstrap() = viewModelScope.launch {
         try {
-            val userSnap   = db.collection("users").document(uid).get().await()
-            orgId          = userSnap.getString("activeOrgId") ?: return@launch
+            // ── User & org ───────────────────────────────────────────────────
+            val userSnap = db.collection("users").document(uid).get().await()
+            orgId        = userSnap.getString("activeOrgId") ?: return@launch
 
-            val orgSnap    = db.collection("organizations").document(orgId).get().await()
+            val orgSnap  = db.collection("organizations").document(orgId).get().await()
 
             @Suppress("UNCHECKED_CAST")
-            val settings   = orgSnap.get("settings") as? Map<String, Any> ?: emptyMap()
+            val settings = orgSnap.get("settings") as? Map<String, Any> ?: emptyMap()
 
             val memberSnap = db.collection("organizations/$orgId/members")
                 .document(uid).get().await()
             val membership: Map<String, Any> = memberSnap.data ?: emptyMap()
 
-            // ── Parse settings ──────────────────────────────────────────────
-            val monthlyEnabled      = settings["monthlyEnabled"] as? Boolean ?: true
-            val baseAmount          = (settings["baseAmount"] as? Number)?.toDouble() ?: 0.0
-            val customAmount        = (membership["customAmount"] as? Number)?.toDouble()
-            val effectiveBase       = if (settings["uniformAmount"] == false && customAmount != null)
+            // Cache member info for receipt upload
+            cachedMemberId   = userSnap.getString("idNo") ?: uid.take(8)
+            cachedMemberName = userSnap.getString("nameEnglish")
+                ?: userSnap.getString("nameBengali")
+                ?: "Member"
+
+            // ── Parse settings ───────────────────────────────────────────────
+            val monthlyEnabled     = settings["monthlyEnabled"] as? Boolean ?: true
+            val baseAmount         = (settings["baseAmount"] as? Number)?.toDouble() ?: 0.0
+            val customAmount       = (membership["customAmount"] as? Number)?.toDouble()
+            val effectiveBase      = if (settings["uniformAmount"] == false && customAmount != null)
                 customAmount else baseAmount
-            val dueDay              = (settings["dueDate"] as? Number)?.toInt() ?: 10
-            val lateFeeEnabled      = settings["lateFeeEnabled"] as? Boolean ?: false
-            val penaltyAmt          = if (lateFeeEnabled)
-                (settings["penalty"] as? Number)?.toDouble() ?: 0.0
-            else 0.0
-            val enabledMethods      = (settings["paymentMethods"] as? List<*>)
+            val dueDay             = (settings["dueDate"] as? Number)?.toInt() ?: 10
+            val lateFeeEnabled     = settings["lateFeeEnabled"] as? Boolean ?: false
+            val penaltyAmt         = if (lateFeeEnabled)
+                (settings["penalty"] as? Number)?.toDouble() ?: 0.0 else 0.0
+            val enabledMethods     = (settings["paymentMethods"] as? List<*>)
                 ?.filterIsInstance<String>() ?: DEFAULT_METHODS
-            val requireBackpayment  = settings["requireBackpayment"] as? Boolean ?: false
-            val joiningDateStr      = membership["joiningDate"] as? String ?: ""
-            val orgStartStr         = settings["startDate"] as? String ?: ""
-            val latePayerEnabled    = settings["latePayerEnabled"] as? Boolean ?: false
-            val latePayerThreshold  = (settings["latePayerAfterMonths"] as? Number)?.toInt() ?: 1
-            val reregAutoAssign     = settings["reregAutoAssign"] as? Boolean ?: false
-            val reregThreshold      = (settings["reregAfterMonths"] as? Number)?.toInt() ?: 3
-            val reregGranted        = membership["reregGranted"] as? Boolean ?: false
-            val orgName             = orgSnap.getString("name") ?: ""
-            val orgLogoUrl          = orgSnap.getString("logoURL")
+            val requireBackpayment = settings["requireBackpayment"] as? Boolean ?: false
+            val joiningDateStr     = membership["joiningDate"] as? String ?: ""
+            val orgStartStr        = settings["startDate"] as? String ?: ""
+            val latePayerEnabled   = settings["latePayerEnabled"] as? Boolean ?: false
+            val latePayerThreshold = (settings["latePayerAfterMonths"] as? Number)?.toInt() ?: 1
+            val reregAutoAssign    = settings["reregAutoAssign"] as? Boolean ?: false
+            val reregThreshold     = (settings["reregAfterMonths"] as? Number)?.toInt() ?: 3
+            val reregGranted       = membership["reregGranted"] as? Boolean ?: false
+            val orgName            = orgSnap.getString("name") ?: ""
+            val orgLogoUrl         = orgSnap.getString("logoURL")
 
             // ── Payment accounts ─────────────────────────────────────────────
             @Suppress("UNCHECKED_CAST")
             val rawAccounts = settings["paymentAccounts"]
                     as? Map<String, List<Map<String, Any>>> ?: emptyMap()
-            val paymentAccounts = rawAccounts.mapValues { (_, accounts) ->
-                accounts.map { a ->
+            val paymentAccounts = rawAccounts.mapValues { (_, list) ->
+                list.map { a ->
                     PaymentAccount(
-                        id      = a["id"] as? String ?: UUID.randomUUID().toString(),
-                        label   = a["label"] as? String ?: "",
-                        number  = a["number"] as? String ?: "",
+                        id      = a["id"]      as? String  ?: UUID.randomUUID().toString(),
+                        label   = a["label"]   as? String  ?: "",
+                        number  = a["number"]  as? String  ?: "",
                         enabled = a["enabled"] as? Boolean ?: true
                     )
                 }
@@ -147,7 +172,8 @@ class InstallmentViewModel @Inject constructor() : ViewModel() {
                 val status = doc.getString("status") ?: return@forEach
                 if (status == "rejected") return@forEach
                 @Suppress("UNCHECKED_CAST")
-                (doc.get("paidMonths") as? List<*>)?.filterIsInstance<String>()
+                (doc.get("paidMonths") as? List<*>)
+                    ?.filterIsInstance<String>()
                     ?.forEach { paid.add(it) }
                 doc.getString("specialSubId")?.let { pSpec.add(it) }
             }
@@ -155,71 +181,74 @@ class InstallmentViewModel @Inject constructor() : ViewModel() {
             _unpaidMonths.value = allMonths.filter { it !in paid }
 
             // ── Late-payer / re-registration detection ───────────────────────
-            val missedCount       = allMonths.count { it !in paid && isMonthPast(it, dueDay) }
-            val isLatePayer       = latePayerEnabled && missedCount > latePayerThreshold
-            val reregRequired     = reregAutoAssign && missedCount >= reregThreshold
-            val reregSubPaid      = pSpec.any { sid ->
+            val missedCount   = allMonths.count { it !in paid && isMonthPast(it, dueDay) }
+            val isLatePayer   = latePayerEnabled && missedCount > latePayerThreshold
+            val reregRequired = reregAutoAssign && missedCount >= reregThreshold
+            val reregSubPaid  = pSpec.any { sid ->
                 _specialSubs.value.find { it.id == sid }?.type == "reregistration_fee"
             }
-            val reregPending      = reregRequired && !reregSubPaid && !reregGranted
+            val reregPending  = reregRequired && !reregSubPaid && !reregGranted
 
             // ── Gateway fees ─────────────────────────────────────────────────
             @Suppress("UNCHECKED_CAST")
-            gatewayFees = settings["gatewayFees"] as? Map<String, Map<String, Any>> ?: emptyMap()
+            gatewayFees = settings["gatewayFees"]
+                    as? Map<String, Map<String, Any>> ?: emptyMap()
 
+            // ── Initial method + account ─────────────────────────────────────
             val initialMethod   = enabledMethods.firstOrNull() ?: ""
             val initialAccounts = paymentAccounts[initialMethod]
                 ?.filter { it.enabled } ?: emptyList()
 
             _uiState.value = InstallmentUiState(
-                enabledMethods          = enabledMethods,
-                paymentAccounts         = paymentAccounts,
-                currentMethodAccounts   = initialAccounts,
-                selectedMethod          = initialMethod,
-                selectedAccount         = if (initialAccounts.size == 1) initialAccounts[0] else null,
-                baseAmount              = effectiveBase,
-                penalty                 = penaltyAmt,
-                monthlyEnabled          = monthlyEnabled,
-                hasAnything             = monthlyEnabled,
-                orgName                 = orgName,
-                orgLogoUrl              = orgLogoUrl,
-                paidSpecialIds          = pSpec,
-                missedCount             = missedCount,
-                isLatePayer             = isLatePayer,
-                reregistrationPending   = reregPending,
-                reregistrationGranted   = reregGranted,
+                enabledMethods        = enabledMethods,
+                paymentAccounts       = paymentAccounts,
+                currentMethodAccounts = initialAccounts,
+                selectedMethod        = initialMethod,
+                selectedAccount       = if (initialAccounts.size == 1) initialAccounts[0] else null,
+                baseAmount            = effectiveBase,
+                penalty               = penaltyAmt,
+                monthlyEnabled        = monthlyEnabled,
+                hasAnything           = monthlyEnabled,
+                orgName               = orgName,
+                orgLogoUrl            = orgLogoUrl,
+                paidSpecialIds        = pSpec,
+                missedCount           = missedCount,
+                isLatePayer           = isLatePayer,
+                reregistrationPending = reregPending,
+                reregistrationGranted = reregGranted,
             )
 
             listenToSpecialSubs()
 
         } catch (_: Exception) {
-            // Bootstrap failures are silent; UI stays in initial loading state
+            // Bootstrap failures are silent; UI stays in initial state
         }
     }
 
-    // ── Real-time special subscriptions listener ───────────────────────────────
+    // ── Special subscriptions real-time listener ───────────────────────────────
+
     private fun listenToSpecialSubs() {
         subsListener = db.collection("organizations/$orgId/specialSubscriptions")
             .addSnapshotListener { snap, _ ->
                 if (snap == null) return@addSnapshotListener
                 val now  = System.currentTimeMillis()
                 val subs = snap.documents.mapNotNull { doc ->
-                    val isActive = doc.getBoolean("active") ?: false
+                    val isActive   = doc.getBoolean("active") ?: false
                     if (!isActive) return@mapNotNull null
                     val deadline   = doc.getString("deadline") ?: return@mapNotNull null
-                    val deadlineMs = parseDate(deadline) ?: return@mapNotNull null
+                    val deadlineMs = parseDate(deadline)       ?: return@mapNotNull null
                     if (deadlineMs < now) return@mapNotNull null
                     val daysLeft   = ((deadlineMs - now) / (1000L * 60 * 60 * 24)).toInt()
                     SpecialSub(
-                        id               = doc.id,
-                        title            = doc.getString("title") ?: "",
-                        description      = doc.getString("description") ?: "",
-                        amount           = doc.getDouble("amount") ?: 0.0,
-                        deadline         = deadline,
-                        daysLeft         = daysLeft,
-                        type             = doc.getString("type") ?: "general",
+                        id                = doc.id,
+                        title             = doc.getString("title")       ?: "",
+                        description       = doc.getString("description") ?: "",
+                        amount            = doc.getDouble("amount")      ?: 0.0,
+                        deadline          = deadline,
+                        daysLeft          = daysLeft,
+                        type              = doc.getString("type")        ?: "general",
                         allowCustomAmount = doc.getBoolean("allowCustomAmount") ?: false,
-                        active           = true   // already filtered above
+                        active            = true
                     )
                 }.sortedBy { it.deadline }
 
@@ -233,7 +262,7 @@ class InstallmentViewModel @Inject constructor() : ViewModel() {
             }
     }
 
-    // ── UI event handlers ──────────────────────────────────────────────────────
+    // ── Public UI event handlers ───────────────────────────────────────────────
 
     fun setPayMode(mode: PayMode) {
         _uiState.update { state ->
@@ -287,12 +316,37 @@ class InstallmentViewModel @Inject constructor() : ViewModel() {
         _uiState.update { it.copy(txId = value) }
     }
 
-    // ── Total recalculation ────────────────────────────────────────────────────
+    fun setReceiptUri(uri: Uri?, name: String, mimeType: String) {
+        _uiState.update {
+            it.copy(
+                receiptUri      = uri,
+                receiptName     = name,
+                receiptMimeType = mimeType,
+            )
+        }
+    }
+
+    fun clearReceipt() {
+        _uiState.update {
+            it.copy(
+                receiptUri      = null,
+                receiptName     = "",
+                receiptMimeType = "",
+            )
+        }
+    }
+
+    fun dismissError() {
+        _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    // ── Totals recalculation ───────────────────────────────────────────────────
+
     private fun recalculate() {
         val state     = _uiState.value
         val isSpecial = state.payMode == PayMode.SPECIAL && state.selectedSpecial != null
 
-        val specialBase: Double = if (isSpecial) {
+        val specialBase = if (isSpecial) {
             val sub = state.selectedSpecial!!
             if (sub.allowCustomAmount)
                 state.customSpecialAmount.toDoubleOrNull() ?: sub.amount
@@ -300,25 +354,26 @@ class InstallmentViewModel @Inject constructor() : ViewModel() {
                 sub.amount
         } else 0.0
 
-        val monthCount: Int  = state.selectedMonths.size
-        val lateCount: Int   = state.selectedMonths.count { isMonthLate(it, 10) }
+        val totalBase    = if (isSpecial) specialBase
+                           else state.selectedMonths.size.toDouble() * state.baseAmount
+        val totalPenalty = if (isSpecial) 0.0
+                           else state.selectedMonths
+                               .count { isMonthLate(it, 10) }
+                               .toDouble() * state.penalty
 
-        val totalBase: Double    = if (isSpecial) specialBase
-        else monthCount.toDouble() * state.baseAmount
-        val totalPenalty: Double = if (isSpecial) 0.0
-        else lateCount.toDouble() * state.penalty
+        val feeRate = getGatewayFeeRate(state.selectedMethod)
+        val fee     = (totalBase + totalPenalty) * feeRate
+        val grand   = totalBase + totalPenalty + fee
 
-        val feeRate: Double = getGatewayFeeRate(state.selectedMethod)
-        val fee: Double     = (totalBase + totalPenalty) * feeRate
-        val grand: Double   = totalBase + totalPenalty + fee
-
-        _uiState.update { it.copy(
-            totalBase    = totalBase,
-            totalPenalty = totalPenalty,
-            feeRate      = feeRate,
-            fee          = fee,
-            grandTotal   = grand,
-        )}
+        _uiState.update {
+            it.copy(
+                totalBase    = totalBase,
+                totalPenalty = totalPenalty,
+                feeRate      = feeRate,
+                fee          = fee,
+                grandTotal   = grand,
+            )
+        }
     }
 
     private fun getGatewayFeeRate(method: String): Double {
@@ -329,11 +384,67 @@ class InstallmentViewModel @Inject constructor() : ViewModel() {
     }
 
     // ── Payment submission ─────────────────────────────────────────────────────
-    fun submitPayment() = viewModelScope.launch {
+
+    fun submitPayment(context: Context) = viewModelScope.launch {
         val state = _uiState.value
+
+        // Guard: impersonation mode
         if (state.isImpersonating) return@launch
-        _uiState.update { it.copy(loading = true) }
+
+        // ── Validation ───────────────────────────────────────────────────────
+        if (state.payMode == PayMode.MONTHLY && state.selectedMonths.isEmpty()) {
+            _uiState.update { it.copy(errorMessage = "Please select at least one month.") }
+            return@launch
+        }
+        if (state.payMode == PayMode.SPECIAL && state.selectedSpecial == null) {
+            _uiState.update { it.copy(errorMessage = "Please select a special subscription.") }
+            return@launch
+        }
+        if (state.selectedMethod.isNotEmpty() &&
+            state.selectedMethod != "Cash" &&
+            state.currentMethodAccounts.size > 1 &&
+            state.selectedAccount == null
+        ) {
+            _uiState.update {
+                it.copy(errorMessage = "Please select which account you sent the payment to.")
+            }
+            return@launch
+        }
+        // txId OR receipt required for non-Cash
+        if (state.selectedMethod != "Cash" &&
+            state.txId.isBlank() &&
+            state.receiptUri == null
+        ) {
+            _uiState.update {
+                it.copy(errorMessage = "Please provide a Transaction ID or upload a payment receipt (or both).")
+            }
+            return@launch
+        }
+
+        // ── Start loading ────────────────────────────────────────────────────
+        _uiState.update {
+            it.copy(
+                loading             = true,
+                isUploadingReceipt  = state.receiptUri != null,
+            )
+        }
+
         try {
+            // ── Upload receipt if one was picked ─────────────────────────────
+            var receiptResult: ReceiptUploadResult? = null
+            if (state.receiptUri != null) {
+                receiptResult = uploadReceipt(
+                    context      = context,
+                    uri          = state.receiptUri,
+                    memberId     = cachedMemberId,
+                    memberName   = cachedMemberName,
+                    userFolderId = null,
+                )
+            }
+            // Upload done — flip the flag before writing Firestore
+            _uiState.update { it.copy(isUploadingReceipt = false) }
+
+            // ── Build Firestore payload ───────────────────────────────────────
             val acc = state.selectedAccount
                 ?: state.currentMethodAccounts.firstOrNull()
 
@@ -344,9 +455,13 @@ class InstallmentViewModel @Inject constructor() : ViewModel() {
                 "txId"          to state.txId.trim(),
                 "status"        to "pending",
                 "createdAt"     to FieldValue.serverTimestamp(),
-                "accountId"     to (acc?.id ?: ""),
-                "accountLabel"  to (acc?.label ?: ""),
+                "accountId"     to (acc?.id     ?: ""),
+                "accountLabel"  to (acc?.label  ?: ""),
                 "accountNumber" to (acc?.number ?: ""),
+                // Receipt fields — empty string when not provided (mirrors web null)
+                "receiptFileId" to (receiptResult?.fileId ?: ""),
+                "receiptUrl"    to (receiptResult?.url    ?: ""),
+                "receiptName"   to (receiptResult?.name   ?: ""),
             )
 
             if (state.payMode == PayMode.MONTHLY) {
@@ -357,37 +472,64 @@ class InstallmentViewModel @Inject constructor() : ViewModel() {
                 payload["paymentType"]    = "monthly"
                 payload["isContribution"] = true
             } else {
-                val sub            = state.selectedSpecial!!
-                val subType        = sub.type.ifEmpty { "general" }
-                val isContribution = subType == "general"
-                payload["specialSubId"]           = sub.id
-                payload["specialSubTitle"]         = sub.title
-                payload["specialSubType"]          = subType
-                payload["baseAmount"]              = sub.amount
-                payload["gatewayFee"]              = state.fee
-                payload["paidMonths"]              = emptyList<String>()
-                payload["paymentType"]             = subType
-                payload["isContribution"]          = isContribution
-                payload["countAsContribution"]     = isContribution
+                val sub     = state.selectedSpecial!!
+                val subType = sub.type.ifEmpty { "general" }
+                val isContr = subType == "general"
+                payload["specialSubId"]       = sub.id
+                payload["specialSubTitle"]    = sub.title
+                payload["specialSubType"]     = subType
+                payload["baseAmount"]         = sub.amount
+                payload["gatewayFee"]         = state.fee
+                payload["paidMonths"]         = emptyList<String>()
+                payload["paymentType"]        = subType
+                payload["isContribution"]     = isContr
+                payload["countAsContribution"]= isContr
             }
 
             db.collection("organizations/$orgId/investments").add(payload).await()
-            _uiState.update { it.copy(success = true, loading = false) }
 
-        } catch (_: Exception) {
-            _uiState.update { it.copy(loading = false) }
+            // ── Success — reset form ──────────────────────────────────────────
+            _uiState.update {
+                it.copy(
+                    success             = true,
+                    loading             = false,
+                    isUploadingReceipt  = false,
+                    selectedMonths      = emptySet(),
+                    selectedSpecial     = null,
+                    selectedAccount     = null,
+                    txId                = "",
+                    customSpecialAmount = "",
+                    receiptUri          = null,
+                    receiptName         = "",
+                    receiptMimeType     = "",
+                )
+            }
+
+        } catch (e: Exception) {
+            _uiState.update {
+                it.copy(
+                    loading            = false,
+                    isUploadingReceipt = false,
+                    errorMessage       = "Submission failed: ${e.message}",
+                )
+            }
         }
     }
 
     fun resetSuccess() {
-        _uiState.update { it.copy(
-            success             = false,
-            selectedMonths      = emptySet(),
-            selectedSpecial     = null,
-            txId                = "",
-            customSpecialAmount = "",
-            selectedAccount     = null,
-        )}
+        _uiState.update {
+            it.copy(
+                success             = false,
+                selectedMonths      = emptySet(),
+                selectedSpecial     = null,
+                txId                = "",
+                customSpecialAmount = "",
+                selectedAccount     = null,
+                receiptUri          = null,
+                receiptName         = "",
+                receiptMimeType     = "",
+            )
+        }
         recalculate()
     }
 
@@ -401,11 +543,11 @@ class InstallmentViewModel @Inject constructor() : ViewModel() {
     private fun buildMonthList(startDate: String): List<String> {
         if (startDate.isEmpty()) return emptyList()
         return try {
-            val months  = mutableListOf<String>()
-            val sdf     = SimpleDateFormat("yyyy-MM", Locale.US)
-            val start   = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val months = mutableListOf<String>()
+            val sdf    = SimpleDateFormat("yyyy-MM", Locale.US)
+            val start  = SimpleDateFormat("yyyy-MM-dd", Locale.US)
                 .parse(startDate) ?: return emptyList()
-            val cal     = Calendar.getInstance().apply {
+            val cal    = Calendar.getInstance().apply {
                 time = start
                 set(Calendar.DAY_OF_MONTH, 1)
             }
@@ -431,7 +573,6 @@ class InstallmentViewModel @Inject constructor() : ViewModel() {
         } catch (_: Exception) { false }
     }
 
-    // isMonthPast is an alias kept for readability at the call site
     private fun isMonthPast(month: String, dueDay: Int) = isMonthLate(month, dueDay)
 
     private fun parseDate(dateStr: String): Long? {
