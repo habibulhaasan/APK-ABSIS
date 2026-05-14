@@ -19,7 +19,7 @@ class InstallmentReminderWorker(
 
         fun schedule(context: Context) {
             val request = PeriodicWorkRequestBuilder<InstallmentReminderWorker>(
-                1, TimeUnit.DAYS
+                1, TimeUnit.DAYS // Runs once a day automatically in the background
             )
                 .setInitialDelay(1, TimeUnit.HOURS)
                 .setConstraints(
@@ -60,21 +60,12 @@ class InstallmentReminderWorker(
             }
 
             // 3. Build current month key e.g. "2026-05"
-            // FIXED: Added Locale.US to String.format
             val cal      = Calendar.getInstance()
             val curMonth = "${cal.get(Calendar.YEAR)}-${
                 String.format(Locale.US, "%02d", cal.get(Calendar.MONTH) + 1)
             }"
 
-            // 4. Check due day — only remind on or after the due day
-            val dueDay = (settings["dueDate"] as? Number)?.toInt() ?: 10
-            if (cal.get(Calendar.DAY_OF_MONTH) < dueDay) {
-                // Before due day — cancel any leftover sticky reminder from last month
-                CapitalSyncMessagingService.cancelInstallmentReminder(applicationContext)
-                return Result.success()
-            }
-
-            // 5. Query this member's payments for the current month
+            // 4. Query this member's payments for the current month
             val paySnap = db.collection("organizations/$orgId/investments")
                 .whereEqualTo("userId", uid)
                 .get().await()
@@ -90,18 +81,17 @@ class InstallmentReminderWorker(
                 paidMonths.contains(curMonth)
             }
 
-            // FIXED: Added CapitalSyncMessagingService prefix to function calls
             if (paidThisMonth) {
-                // Paid — cancel the sticky notification if it's showing
+                // Paid — cancel the notification if it's showing
                 CapitalSyncMessagingService.cancelInstallmentReminder(applicationContext)
             } else {
-                // Not paid — show or refresh the sticky notification
+                // Not paid — show the daily reminder notification
                 CapitalSyncMessagingService.showNotification(
                     context   = applicationContext,
                     title     = "📅 Installment Due",
                     body      = "Your installment for $curMonth has not been paid yet. Tap to pay now.",
                     channelId = CapitalSyncMessagingService.CHANNEL_INSTALLMENT,
-                    sticky    = true,
+                    sticky    = false, // Set to false so users can swipe it away for the day
                     notifId   = CapitalSyncMessagingService.NOTIF_ID_INSTALLMENT,
                 )
             }
