@@ -67,9 +67,9 @@ fun MainShell(
     ) { padding ->
         content(padding)
         AppUpdateChecker(
-            currentVersion = "1.0.0", // Matches your build.gradle.kts versionName
-            jsonUrl        = "https://absis.netlify.app/app-release.json",
-            apkDownloadUrl = "https://absis.netlify.app/absis-capital-sync.apk"
+            currentVersion = "2.0.0", // Matches your build.gradle.kts versionName
+            jsonUrl        = "https://absis-backup.vercel.app/app-release.json",
+            apkDownloadUrl = "https://absis-backup.vercel.app/absis-capital-sync.apk"
         )
     }
 
