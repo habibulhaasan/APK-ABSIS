@@ -43,6 +43,9 @@ class ProfileViewModel @Inject constructor(
     private val _lastUpdated   = MutableStateFlow<String?>(null)
     private val _memberInfo    = MutableStateFlow<Map<String, Any>?>(null)
     private val _fileTab       = MutableStateFlow("all")
+    
+    // Tracks files uploaded during the current session
+    private val _uploadResults = MutableStateFlow<Map<String, List<LegalFile>>>(emptyMap())
 
     val form          = _form.asStateFlow()
     val legalFiles    = _legalFiles.asStateFlow()
@@ -53,6 +56,7 @@ class ProfileViewModel @Inject constructor(
     val lastUpdated   = _lastUpdated.asStateFlow()
     val memberInfo    = _memberInfo.asStateFlow()
     val fileTab       = _fileTab.asStateFlow()
+    val uploadResults = _uploadResults.asStateFlow()
 
     private val uid: String get() = auth.currentUser?.uid ?: ""
     private var orgId: String = ""
@@ -67,8 +71,7 @@ class ProfileViewModel @Inject constructor(
             orgId          = u["activeOrgId"] as? String ?: return@launch
             driveFolderId  = u["driveFolderId"] as? String
 
-            val memberSnap = db.collection("organizations/$orgId/members")
-                .document(uid).get().await()
+            val memberSnap = db.collection("organizations/$orgId/members").document(uid).get().await()
             val m = memberSnap.data ?: emptyMap()
             _memberInfo.value = m + u
 
@@ -223,11 +226,18 @@ class ProfileViewModel @Inject constructor(
                 uploadedAt = java.time.Instant.now().toString(), category = category, description = ""
             )
 
+            // Update main file list
             val updatedFiles = _legalFiles.value + newFile
             _legalFiles.value = updatedFiles
             db.collection("organizations/$orgId/members").document(uid).update("legalFiles", updatedFiles.map { it.toMap() }).await()
 
-            showToast("✅ File uploaded to Google Drive")
+            // Update session upload results
+            val currentList = _uploadResults.value[type] ?: emptyList()
+            _uploadResults.value = _uploadResults.value.toMutableMap().apply { 
+                put(type, currentList + newFile) 
+            }
+
+            showToast("✅ File uploaded successfully")
         } catch (e: Exception) {
             showToast("Upload failed: ${e.message}", true)
         }
@@ -260,6 +270,12 @@ class ProfileViewModel @Inject constructor(
             showToast(e.message ?: "Save failed", true)
         }
         _saving.value = false
+    }
+
+    fun downloadProfilePdf(context: Context) {
+        // PDF Export relies on a complex canvas drawing process that is handled dynamically
+        // We simulate the trigger for the native Android environment.
+        showToast("🖨️ PDF Generation will be available soon.")
     }
 
     fun setFileTab(tab: String) { _fileTab.value = tab }

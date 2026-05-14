@@ -12,6 +12,7 @@ import javax.inject.Inject
 
 import com.google.firebase.Timestamp
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Locale
 
 data class PaymentItem(val date: String, val method: String, val amount: Double, val status: String)
@@ -23,6 +24,9 @@ data class DashboardData(
     val activeLoans: Int, val outstanding: Double, val myPayments: List<PaymentItem>,
     val totalCapital: Double, val paidThisMonth: Boolean, val nextRepayment: RepaymentItem?,
     val isNewMember: Boolean,
+    val usedExpenses: Double,
+    val expensesThisMonth: Double,
+    val expenseCount: Int
 )
 
 @HiltViewModel
@@ -53,6 +57,30 @@ class DashboardViewModel @Inject constructor() : ViewModel() {
         loadDashboard()
     }
 
+    // ── Added logic to mark notifications as read ──
+    fun markNotificationsAsRead() = viewModelScope.launch {
+        val unread = _notifications.value.filter { it["read"] != true }
+        if (unread.isEmpty()) return@launch
+
+        val uid = auth.currentUser?.uid ?: return@launch
+        val orgId = _userData.value?.get("activeOrgId") as? String ?: return@launch
+
+        try {
+            val batch = db.batch()
+            unread.forEach { notif ->
+                val notifId = notif["id"] as? String ?: return@forEach
+                val ref = db.collection("organizations/$orgId/notifications").document(notifId)
+                batch.update(ref, "read", true)
+            }
+            batch.commit().await()
+            
+            // Instantly update local state to hide red badge
+            _notifications.update { list ->
+                list.map { if (it["read"] != true) it.toMutableMap().apply { put("read", true) } else it }
+            }
+        } catch (_: Exception) { }
+    }
+
     private fun loadDashboard() = viewModelScope.launch {
         val uid      = auth.currentUser?.uid ?: return@launch
         val userSnap = db.collection("users").document(uid).get().await()
@@ -65,19 +93,18 @@ class DashboardViewModel @Inject constructor() : ViewModel() {
         orgName = orgData["name"] as? String ?: "Organization"
 
         // Check if user is org admin
-        val memberSnap = db.collection("organizations/$orgId/members")
-            .document(uid).get().await()
+        val memberSnap = db.collection("organizations/$orgId/members").document(uid).get().await()
         val memRole  = memberSnap.getString("role") ?: ""
         val approved = memberSnap.getBoolean("approved") ?: false
         isOrgAdmin       = memRole == "admin" && approved
         hasCapitalLedger = orgData["hasCapitalLedger"] as? Boolean ?: true
         hasQardHasana    = orgData["hasQardHasana"]    as? Boolean ?: true
 
-        val (paySnap, distSnap, loanSnap) = Triple(
+        val (paySnap, distSnap, loanSnap, expSnap) = listOf(
             db.collection("organizations/$orgId/investments").get().await(),
-            db.collection("organizations/$orgId/profitDistributions")
-                .orderBy("createdAt", Query.Direction.DESCENDING).get().await(),
-            db.collection("organizations/$orgId/loans").get().await()
+            db.collection("organizations/$orgId/profitDistributions").orderBy("createdAt", Query.Direction.DESCENDING).get().await(),
+            db.collection("organizations/$orgId/loans").get().await(),
+            db.collection("organizations/$orgId/expenses").get().await()
         )
 
         val payments   = paySnap.documents.map { it.data?.plus("id" to it.id) ?: mapOf() }
@@ -111,8 +138,24 @@ class DashboardViewModel @Inject constructor() : ViewModel() {
         val activeLoans = loanSnap.documents.filter { it["userId"] == uid && it["status"] == "disbursed" }
         val outstanding = activeLoans.sumOf { (it["outstandingBalance"] as? Number)?.toDouble() ?: 0.0 }
 
+        val expenses = expSnap.documents.mapNotNull { it.data }
+        val usedExpenses = expenses.sumOf { (it["amount"] as? Number)?.toDouble() ?: 0.0 }
+        val expenseCount = expenses.size
+        
+        val cal = Calendar.getInstance()
+        val curMonth = cal.get(Calendar.MONTH)
+        val curYear = cal.get(Calendar.YEAR)
+        
+        val expensesThisMonth = expenses.filter {
+            val dateStr = it["date"] as? String ?: return@filter false
+            try {
+                val dCal = Calendar.getInstance()
+                dCal.time = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateStr) ?: return@filter false
+                dCal.get(Calendar.MONTH) == curMonth && dCal.get(Calendar.YEAR) == curYear
+            } catch(e: Exception) { false }
+        }.sumOf { (it["amount"] as? Number)?.toDouble() ?: 0.0 }
+
         val pmtItems = myPayments.take(5).map {
-            // 1. Safely extract and format the Firebase Timestamp
             val rawDate = it["createdAt"]
             val dateStr = if (rawDate is Timestamp) {
                 SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(rawDate.toDate())
@@ -138,20 +181,23 @@ class DashboardViewModel @Inject constructor() : ViewModel() {
         }
 
         _dashData.value = DashboardData(
-            myCapital     = myCapital,
-            myCapPct      = myCapPct,
-            myPending     = myPending,
-            myVerified    = myVerified,
-            myTotalProfit = myTotalProfit,
-            myLatestShare = myLatestShare,
-            latestDist    = distData,
-            activeLoans   = activeLoans.size,
-            outstanding   = outstanding,
-            myPayments    = pmtItems,
-            totalCapital  = totalCapital,
-            paidThisMonth = false,
-            nextRepayment = null,
-            isNewMember   = myVerified == 0 && myPending == 0,
+            myCapital         = myCapital,
+            myCapPct          = myCapPct,
+            myPending         = myPending,
+            myVerified        = myVerified,
+            myTotalProfit     = myTotalProfit,
+            myLatestShare     = myLatestShare,
+            latestDist        = distData,
+            activeLoans       = activeLoans.size,
+            outstanding       = outstanding,
+            myPayments        = pmtItems,
+            totalCapital      = totalCapital,
+            paidThisMonth     = false,
+            nextRepayment     = null, 
+            isNewMember       = myVerified == 0 && myPending == 0,
+            usedExpenses      = usedExpenses,
+            expensesThisMonth = expensesThisMonth,
+            expenseCount      = expenseCount
         )
         _loading.value = false
 
@@ -159,8 +205,11 @@ class DashboardViewModel @Inject constructor() : ViewModel() {
             val nSnap = db.collection("organizations/$orgId/notifications")
                 .whereEqualTo("userId", uid)
                 .orderBy("createdAt", Query.Direction.DESCENDING)
-                .limit(3).get().await()
-            _notifications.value = nSnap.documents.mapNotNull { it.data }
+                .limit(10).get().await()
+            // Make sure to extract document ID so we can mark it read
+            _notifications.value = nSnap.documents.mapNotNull { doc ->
+                doc.data?.toMutableMap()?.apply { put("id", doc.id) }
+            }
         } catch (_: Exception) {}
     }
 }

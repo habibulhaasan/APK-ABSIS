@@ -1,28 +1,26 @@
-// ui/shell/MainShell.kt  — full replacement
+// ui/shell/MainShell.kt
 package com.absis.capitalsync.ui.shell
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.absis.capitalsync.core.navigation.Screen
-
-// ── 4 bottom-nav tabs ─────────────────────────────────────────────────────────
-private data class NavTab(val route: String, val label: String, val icon: String)
-
-private val NAV_TABS = listOf(
-    NavTab(Screen.Dashboard.route,   "Home",    "🏠"),
-    NavTab(Screen.Installment.route, "Pay",     "💳"),
-    NavTab(Screen.Profile.route,     "Profile", "👤"),
-    NavTab("more",                   "More",    "☰"),
-)
+import com.absis.capitalsync.core.updater.AppUpdateChecker
 
 // Routes that show the bottom bar
 private val NAV_ROUTES = setOf(
@@ -32,7 +30,6 @@ private val NAV_ROUTES = setOf(
     Screen.Ledger.route,
 )
 
-// ── Shell ─────────────────────────────────────────────────────────────────────
 @Composable
 fun MainShell(
     navController: NavHostController,
@@ -47,14 +44,17 @@ fun MainShell(
     Scaffold(
         bottomBar = {
             if (showNav) {
-                BottomBar(
+                CustomFloatingBottomBar(
                     currentRoute = currentRoute,
-                    onNavigate   = { route ->
+                    onNavigate = { route ->
                         if (route == "more") {
                             showMoreSheet = true
                         } else if (route != currentRoute) {
                             navController.navigate(route) {
-                                popUpTo(Screen.Dashboard.route) { saveState = true }
+                                // Correct backstack logic preventing tab lockouts
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
                                 launchSingleTop = true
                                 restoreState    = true
                             }
@@ -66,9 +66,14 @@ fun MainShell(
         containerColor = Color(0xFFF8FAFC),
     ) { padding ->
         content(padding)
+        AppUpdateChecker(
+            currentVersion = "1.0.0", // Matches your build.gradle.kts versionName
+            jsonUrl        = "https://absis.netlify.app/app-release.json",
+            apkDownloadUrl = "https://absis.netlify.app/absis-capital-sync.apk"
+        )
     }
 
-    // ── "More" bottom sheet ───────────────────────────────────────────────────
+    // ── "More" bottom sheet ───────────
     if (showMoreSheet) {
         MoreBottomSheet(
             currentRoute = currentRoute,
@@ -76,7 +81,7 @@ fun MainShell(
                 showMoreSheet = false
                 if (route != currentRoute) {
                     navController.navigate(route) {
-                        popUpTo(Screen.Dashboard.route) { saveState = true }
+                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
                         launchSingleTop = true
                         restoreState    = true
                     }
@@ -87,48 +92,90 @@ fun MainShell(
     }
 }
 
-// ── Bottom bar ────────────────────────────────────────────────────────────────
+// ── Custom Floating Bottom Navigation ─────────────────────────────────────────
 @Composable
-private fun BottomBar(currentRoute: String?, onNavigate: (String) -> Unit) {
-    NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
-        NAV_TABS.forEach { tab ->
-            val selected = when (tab.route) {
-                "more"  -> currentRoute in setOf(
-                    Screen.Investments.route, Screen.Expenses.route,
-                    Screen.Loans.route, Screen.Ledger.route
-                )
-                else    -> currentRoute == tab.route
+private fun CustomFloatingBottomBar(currentRoute: String?, onNavigate: (String) -> Unit) {
+    // Explicit sizing container ensures the FAB is not clipped by Scaffold's bounds
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        // Main Navigation Background
+        Surface(
+            color = Color.White,
+            shadowElevation = 16.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .fillMaxWidth()
+                    .navigationBarsPadding(), 
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Left Side
+                Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    NavItem(Icons.Filled.Home, "Home", currentRoute == Screen.Dashboard.route) { onNavigate(Screen.Dashboard.route) }
+                    NavItem(Icons.Filled.List, "Ledger", currentRoute == Screen.Ledger.route) { onNavigate(Screen.Ledger.route) }
+                }
+
+                // Space for floating center button
+                Spacer(Modifier.width(60.dp)) 
+
+                // Right Side
+                Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    NavItem(Icons.Filled.Person, "Profile", currentRoute == Screen.Profile.route) { onNavigate(Screen.Profile.route) }
+                    NavItem(
+                        icon = Icons.Filled.Menu, 
+                        label = "More", 
+                        isActive = currentRoute in setOf(Screen.Investments.route, Screen.Expenses.route, Screen.Loans.route),
+                        onClick = { onNavigate("more") }
+                    )
+                }
             }
-            NavigationBarItem(
-                selected = selected,
-                onClick  = { onNavigate(tab.route) },
-                icon     = { Text(tab.icon, fontSize = 20.sp) },
-                label    = {
-                    Text(tab.label, fontSize = 10.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
-                },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedTextColor   = Color(0xFF2563EB),
-                    unselectedTextColor = Color(0xFF94A3B8),
-                    indicatorColor      = Color(0xFFEFF6FF),
-                )
-            )
+        }
+
+        // Center Floating "Pay" Button, anchored absolutely to break out of the white bounds securely
+        Box(
+            modifier = Modifier
+                .padding(bottom = 32.dp) // Pushes it completely above the surface properly
+                .navigationBarsPadding() // Adapts padding for phones with gesture navigation
+                .size(58.dp)
+                .shadow(8.dp, CircleShape)
+                .clip(CircleShape)
+                .background(if (currentRoute == Screen.Installment.route) Color(0xFF0F172A) else Color(0xFF2563EB))
+                .clickable { onNavigate(Screen.Installment.route) },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.Add, contentDescription = "Pay", tint = Color.White, modifier = Modifier.size(30.dp))
         }
     }
 }
 
-// ── More bottom sheet ─────────────────────────────────────────────────────────
+@Composable
+private fun NavItem(icon: ImageVector, label: String, isActive: Boolean, onClick: () -> Unit) {
+    val color = if (isActive) Color(0xFF2563EB) else Color(0xFF94A3B8)
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.height(4.dp))
+        Text(label, fontSize = 10.sp, color = color, fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium)
+    }
+}
+
+// ── More bottom sheet ─────────────────────────────
 @Composable
 private fun MoreBottomSheet(
     currentRoute: String?,
     onNavigate: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    // We wrap the sheet in a Box to use Alignment.BottomCenter
-    Box(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        // 1. Scrim (Background overlay)
+    Box(modifier = Modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -136,25 +183,20 @@ private fun MoreBottomSheet(
                 .clickable(onClick = onDismiss)
         )
 
-        // 2. Sheet - Now valid because it's inside a BoxScope
         Column(
             Modifier
                 .fillMaxWidth()
                 .wrapContentHeight()
-                .align(Alignment.BottomCenter) // This now works!
+                .align(Alignment.BottomCenter)
                 .background(Color.White, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
                 .padding(bottom = 32.dp)
-                .clickable(enabled = false) { } // Prevents clicks on sheet from dismissing it
+                .clickable(enabled = false) { }
         ) {
-            // Handle
-            Box(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp),
-                contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp), contentAlignment = Alignment.Center) {
                 Surface(Modifier.size(36.dp, 4.dp), RoundedCornerShape(2.dp), color = Color(0xFFE2E8F0)) {}
             }
 
-            Text("More", fontWeight = FontWeight.Bold, fontSize = 16.sp,
-                color = Color(0xFF0F172A), modifier = Modifier.padding(20.dp, 4.dp, 20.dp, 12.dp))
-
+            Text("More", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF0F172A), modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp).padding(bottom = 8.dp))
             HorizontalDivider()
 
             val items = listOf(
@@ -172,18 +214,15 @@ private fun MoreBottomSheet(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        Modifier.padding(20.dp, 14.dp),
+                        Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         Text(icon, fontSize = 20.sp)
-                        Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium,
-                            color = if (isActive) Color(0xFF2563EB) else Color(0xFF0F172A))
-                        
+                        Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = if (isActive) Color(0xFF2563EB) else Color(0xFF0F172A))
                         if (isActive) {
                             Spacer(Modifier.weight(1f))
-                            Surface(color = Color(0xFF2563EB), shape = RoundedCornerShape(50.dp),
-                                modifier = Modifier.size(6.dp)) {}
+                            Surface(color = Color(0xFF2563EB), shape = RoundedCornerShape(50.dp), modifier = Modifier.size(6.dp)) {}
                         }
                     }
                 }

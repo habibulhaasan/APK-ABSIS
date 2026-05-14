@@ -1,4 +1,3 @@
-// app/src/main/java/com/absis/capitalsync/core/notifications/InstallmentReminderWorker.kt
 package com.absis.capitalsync.core.notifications
 
 import android.content.Context
@@ -7,10 +6,11 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 import java.util.Calendar
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class InstallmentReminderWorker(
-    ctx:    Context,
+    ctx: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(ctx, params) {
 
@@ -60,9 +60,10 @@ class InstallmentReminderWorker(
             }
 
             // 3. Build current month key e.g. "2026-05"
+            // FIXED: Added Locale.US to String.format
             val cal      = Calendar.getInstance()
             val curMonth = "${cal.get(Calendar.YEAR)}-${
-                String.format("%02d", cal.get(Calendar.MONTH) + 1)
+                String.format(Locale.US, "%02d", cal.get(Calendar.MONTH) + 1)
             }"
 
             // 4. Check due day — only remind on or after the due day
@@ -89,12 +90,13 @@ class InstallmentReminderWorker(
                 paidMonths.contains(curMonth)
             }
 
+            // FIXED: Added CapitalSyncMessagingService prefix to function calls
             if (paidThisMonth) {
                 // Paid — cancel the sticky notification if it's showing
                 CapitalSyncMessagingService.cancelInstallmentReminder(applicationContext)
             } else {
                 // Not paid — show or refresh the sticky notification
-                showNotification(
+                CapitalSyncMessagingService.showNotification(
                     context   = applicationContext,
                     title     = "📅 Installment Due",
                     body      = "Your installment for $curMonth has not been paid yet. Tap to pay now.",

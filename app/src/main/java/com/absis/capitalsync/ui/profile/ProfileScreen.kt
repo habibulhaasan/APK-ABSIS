@@ -4,7 +4,6 @@ package com.absis.capitalsync.ui.profile
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -15,6 +14,7 @@ import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
@@ -195,15 +195,18 @@ fun DocumentPreviewModal(file: LegalFile, onClose: () -> Unit) {
 
 @Composable
 fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
-    val form        by vm.form.collectAsState()
-    val legalFiles  by vm.legalFiles.collectAsState()
-    val locked      by vm.profileLocked.collectAsState()
-    val saving      by vm.saving.collectAsState()
-    val processing  by vm.processing.collectAsState()
-    val toast       by vm.toast.collectAsState()
-    val lastUpdated by vm.lastUpdated.collectAsState()
-    val memberInfo  by vm.memberInfo.collectAsState()
-    val activeTab   by vm.fileTab.collectAsState()
+    val form          by vm.form.collectAsState()
+    val legalFiles    by vm.legalFiles.collectAsState()
+    val locked        by vm.profileLocked.collectAsState()
+    val saving        by vm.saving.collectAsState()
+    val processing    by vm.processing.collectAsState()
+    val toast         by vm.toast.collectAsState()
+    val lastUpdated   by vm.lastUpdated.collectAsState()
+    val memberInfo    by vm.memberInfo.collectAsState()
+    val activeTab     by vm.fileTab.collectAsState()
+    val uploadResults by vm.uploadResults.collectAsState()
+
+    val context = LocalContext.current
 
     val photoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
@@ -220,6 +223,11 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
     val nomineeFilePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri -> uri?.let { vm.uploadFile(it, "nomineeNid") } }
+
+    // Backup Nominee Photo Upload via Google Drive
+    val nomineePhotoFilePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri -> uri?.let { vm.uploadFile(it, "nomineePhoto") } }
 
     val otherFilePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents()
@@ -244,7 +252,7 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
 
         // Header
         Row(
-            Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            Modifier.fillMaxWidth().padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment     = Alignment.Top
         ) {
@@ -264,28 +272,35 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
                     color    = Color(0xFF64748B)
                 )
             }
+        }
+
+        // Action Buttons Row (Top)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+        ) {
+            OutlinedButton(
+                onClick = { vm.downloadProfilePdf(context) },
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Color(0xFF475569)),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("🖨 Download Profile PDF", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
             if (!locked) {
                 Button(
                     onClick  = { vm.saveProfile() },
                     enabled  = !saving && !processing,
                     shape    = RoundedCornerShape(8.dp),
-                    colors   = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF0F172A)
-                    ),
-                    modifier = Modifier.padding(start = 8.dp)
+                    colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
+                    modifier = Modifier.weight(1f)
                 ) {
                     if (saving)
-                        CircularProgressIndicator(
-                            color    = Color.White,
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp
-                        )
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     else
-                        Text(
-                            "Submit Profile",
-                            fontWeight = FontWeight.Bold,
-                            fontSize   = 13.sp
-                        )
+                        Text("Submit Profile", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
         }
@@ -552,20 +567,39 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
 
         // 📂 Document Uploads
         ProfileSection("📂 Document Uploads") {
-            ProfileField("NID Document") {
+            ProfileField("NID Document", fullWidth = true) {
                 OutlinedButton(
                     onClick  = { filePicker.launch("*/*") },
                     enabled  = !locked && !processing,
                     shape    = RoundedCornerShape(8.dp)
                 ) { Text("📎 Choose NID File", fontSize = 13.sp) }
+                uploadResults["nid"]?.forEach { UploadStatusRow(it) }
             }
-            ProfileField("Nominee NID") {
+            
+            ProfileField("Nominee NID", fullWidth = true) {
                 OutlinedButton(
                     onClick  = { nomineeFilePicker.launch("*/*") },
                     enabled  = !locked && !processing,
                     shape    = RoundedCornerShape(8.dp)
                 ) { Text("📎 Choose Nominee NID", fontSize = 13.sp) }
+                uploadResults["nomineeNid"]?.forEach { UploadStatusRow(it) }
             }
+
+            ProfileField("Nominee Photo File", fullWidth = true) {
+                OutlinedButton(
+                    onClick  = { nomineePhotoFilePicker.launch("image/*") },
+                    enabled  = !locked && !processing,
+                    shape    = RoundedCornerShape(8.dp)
+                ) { Text("📎 Choose Nominee Photo File", fontSize = 13.sp) }
+                if (!locked) {
+                    Text(
+                        "If not uploaded in Nominee / Heir section above",
+                        fontSize = 11.sp, color = Color(0xFFDC2626), modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                uploadResults["nomineePhoto"]?.forEach { UploadStatusRow(it) }
+            }
+
             ProfileField("Other Documents", fullWidth = true) {
                 OutlinedButton(
                     onClick  = { otherFilePicker.launch("*/*") },
@@ -578,7 +612,9 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
                     color    = Color(0xFF64748B),
                     modifier = Modifier.padding(top = 4.dp)
                 )
+                uploadResults["other"]?.forEach { UploadStatusRow(it) }
             }
+            
             if (processing) {
                 ProfileField("", fullWidth = true) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -605,14 +641,24 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
             onTabChange = { vm.setFileTab(it) }
         )
 
-        // ── Bottom save button
-        if (!locked) {
-            Spacer(Modifier.height(16.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment     = Alignment.CenterVertically
+        // ── Bottom Action Bar ──
+        Spacer(Modifier.height(16.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment     = Alignment.CenterVertically
+        ) {
+            OutlinedButton(
+                onClick = { vm.downloadProfilePdf(context) },
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF475569)),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                modifier = Modifier.height(50.dp)
             ) {
+                Text("🖨 Download PDF", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            }
+            Spacer(Modifier.width(8.dp))
+            if (!locked) {
                 if (processing) {
                     Text(
                         "⏳ Waiting for upload…",
@@ -639,10 +685,35 @@ fun ProfileScreen(vm: ProfileViewModel = hiltViewModel()) {
                 }
             }
         }
+        Spacer(Modifier.height(40.dp)) // Extra padding for bottom nav bar
     }
 }
 
-// ── Member File Viewer with document preview
+// ── Upload Status Indicator ──
+@Composable
+fun UploadStatusRow(file: LegalFile) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp)
+            .background(Color(0xFFF0FDF4), RoundedCornerShape(6.dp))
+            .border(1.dp, Color(0xFFBBF7D0), RoundedCornerShape(6.dp))
+            .padding(8.dp, 6.dp)
+    ) {
+        Text("✅", fontSize = 12.sp, modifier = Modifier.padding(end = 6.dp))
+        Text(
+            file.name,
+            color = Color(0xFF15803D),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+// ── Member File Viewer with document preview ──
 
 @Composable
 fun MemberFileViewer(
@@ -827,7 +898,7 @@ fun MemberFileViewer(
     }
 }
 
-// ── Layout composables
+// ── Layout composables ──
 
 @Composable
 fun ProfileSection(title: String, content: @Composable ColumnScope.() -> Unit) {

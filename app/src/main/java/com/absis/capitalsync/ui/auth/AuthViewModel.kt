@@ -4,13 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.messaging.FirebaseMessaging
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
+import com.absis.capitalsync.core.notifications.CapitalSyncMessagingService
 
 data class AuthUiState(
     val loading:     Boolean = false,
@@ -36,22 +36,19 @@ class AuthViewModel @Inject constructor() : ViewModel() {
             val userSnap = db.collection("users").document(uid).get().await()
             val role     = userSnap.getString("role") ?: ""
 
-            // Save FCM token on login
-            FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
-                db.collection("users").document(uid).update("fcmToken", token)
-            }
-
             // Superadmin goes to superadmin panel
             if (role == "superadmin") {
                 _uiState.value = AuthUiState(destination = "superadmin")
                 return@launch
             }
 
-            // Everyone else (including org admins) goes to dashboard.
-            // Admin banner on DashboardScreen handles the jump to admin panel.
+            // Save FCM token for push notifications
+            CapitalSyncMessagingService.saveFcmToken(uid)
+
+            // Everyone else (including admins) goes to dashboard
             _uiState.value = AuthUiState(destination = "dashboard")
 
-        } catch (e: Exception) {
+        } catch (_: Exception) { // Fixed unused parameter 'e'
             _uiState.value = AuthUiState(error = "Invalid email or password.")
         }
     }
@@ -61,7 +58,7 @@ class AuthViewModel @Inject constructor() : ViewModel() {
         try {
             auth.sendPasswordResetEmail(email).await()
             _uiState.value = AuthUiState(resetSent = true)
-        } catch (e: Exception) {
+        } catch (_: Exception) { // Fixed unused parameter 'e'
             _uiState.value = AuthUiState(error = "No account found with this email.")
         }
     }

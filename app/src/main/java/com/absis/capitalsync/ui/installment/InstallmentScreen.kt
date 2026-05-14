@@ -1,16 +1,27 @@
 // ui/installment/InstallmentScreen.kt
+@file:Suppress("SpellCheckingInspection")
+
 package com.absis.capitalsync.ui.installment
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -18,12 +29,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
 
 fun fmtAmt(n: Number) = "৳${NumberFormat.getNumberInstance(Locale.US).format(n.toLong())}"
 
-// ── Data models (unchanged) ───────────────────────────────────────────────────
+// ── Data models ───────────────────────────────────────────────────
 
 data class SpecialSub(
     val id: String, val title: String, val description: String,
@@ -39,6 +52,7 @@ enum class PayMode { MONTHLY, SPECIAL }
 
 // ── Main Screen ───────────────────────────────────────────────────────────────
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InstallmentScreen(
     onNavigateToLedger: () -> Unit,
@@ -48,12 +62,16 @@ fun InstallmentScreen(
     val specialSubs  by vm.specialSubs.collectAsState()
     val unpaidMonths by vm.unpaidMonths.collectAsState()
     val context       = LocalContext.current
-    val snackbarHost  = remember { SnackbarHostState() }
+    val snackBarHost  = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+
+    // ── Pull-to-Refresh State ──
+    var isRefreshing by remember { mutableStateOf(false) }
 
     // Show error snackbar
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let {
-            snackbarHost.showSnackbar(it)
+            snackBarHost.showSnackbar(it)
             vm.dismissError()
         }
     }
@@ -66,406 +84,411 @@ fun InstallmentScreen(
         return
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHost) }) { paddingValues ->
-        Column(
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackBarHost) },
+        containerColor = Color(0xFFF8FAFC)
+    ) { paddingValues ->
+        // PullToRefreshBox handles all the nested scrolling and refreshing UI
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                coroutineScope.launch {
+                    isRefreshing = true
+                    vm.refresh() // Refetches data. Paid months will automatically disappear!
+                    delay(1000)  // Minimum UI delay for visual feedback
+                    isRefreshing = false
+                }
+            },
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
                 .padding(paddingValues)
-                .padding(16.dp)
         ) {
-            // ── Header ──
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier          = Modifier.padding(bottom = 16.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp)
             ) {
-                uiState.orgLogoUrl?.let {
-                    Surface(
-                        Modifier.size(44.dp),
-                        shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFFE2E8F0)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text("🏦", fontSize = 20.sp)
-                        }
-                    }
-                    Spacer(Modifier.width(14.dp))
-                }
-                Column {
-                    Text(
-                        "Pay Installment",
-                        fontSize   = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        color      = Color(0xFF0F172A)
-                    )
-                    Text(
-                        "${uiState.orgName}${if (uiState.monthlyEnabled) " · Monthly: ${fmtAmt(uiState.baseAmount)}" else ""}",
-                        fontSize = 14.sp,
-                        color    = Color(0xFF64748B)
-                    )
-                }
-            }
-
-            // ── Payments paused ──
-            if (!uiState.hasAnything) {
-                Card(
-                    shape    = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
+                // ── Header ──
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier          = Modifier.padding(bottom = 24.dp)
                 ) {
-                    Column(
-                        Modifier.padding(48.dp, 48.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("⏸️", fontSize = 32.sp)
-                        Spacer(Modifier.height(12.dp))
-                        Text("Payments paused", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text(
-                            "Monthly installments are currently disabled.",
-                            fontSize = 13.sp,
-                            color    = Color(0xFF94A3B8)
-                        )
-                    }
-                }
-                return@Column
-            }
-
-            // ── Banners ──
-            if (uiState.isImpersonating) {
-                InfoBanner(
-                    bg    = Color(0xFFFEF3C7),
-                    border= Color(0xFFFDE68A),
-                    text  = "👤 Viewing as member — Payment submission is disabled."
-                )
-            }
-            if (uiState.isLatePayer) {
-                InfoBanner(
-                    bg         = Color(0xFFFEF2F2),
-                    border     = Color(0xFFFCA5A5),
-                    title      = "⚠️ You are marked as a Late Payer",
-                    text       = "You have ${uiState.missedCount} unpaid month${if (uiState.missedCount != 1) "s" else ""}. Please pay overdue installments.",
-                    titleColor = Color(0xFFB91C1C),
-                    textColor  = Color(0xFF7F1D1D)
-                )
-            }
-            if (uiState.reregistrationPending) {
-                InfoBanner(
-                    bg         = Color(0xFFFEF3C7),
-                    border     = Color(0xFFFDE68A),
-                    title      = "🔄 Re-Registration Fee Required",
-                    text       = "Due to ${uiState.missedCount} unpaid months, a re-registration fee has been assigned. Contact admin if this is an error.",
-                    titleColor = Color(0xFF92400E),
-                    textColor  = Color(0xFF78350F)
-                )
-            }
-            if (uiState.reregistrationGranted) {
-                InfoBanner(
-                    bg        = Color(0xFFF0FDF4),
-                    border    = Color(0xFF86EFAC),
-                    text      = "✅ Re-registration fee waived — your admin has granted a rebate.",
-                    textColor = Color(0xFF15803D)
-                )
-            }
-
-            // ── Payment accounts reference card ──
-            if (uiState.paymentAccounts.isNotEmpty()) {
-                Card(
-                    shape    = RoundedCornerShape(12.dp),
-                    colors   = CardDefaults.cardColors(containerColor = Color(0xFFAAD1F5)),
-                    border   = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
-                ) {
-                    Column(Modifier.padding(14.dp)) {
-                        Text(
-                            "📋 Payment Instructions",
-                            fontWeight = FontWeight.Bold,
-                            fontSize   = 13.sp,
-                            color      = Color(0xFF475569),
-                            modifier   = Modifier.padding(bottom = 12.dp)
-                        )
-                        uiState.paymentAccounts.forEach { (method, accounts) ->
-                            if (method == "Cash") {
-                                Surface(
-                                    shape    = RoundedCornerShape(10.dp),
-                                    color    = Color.White,
-                                    border   = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                    modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
-                                ) {
-                                    Column(Modifier.padding(12.dp)) {
-                                        Surface(
-                                            color = Color(0xFF15803D),
-                                            shape = RoundedCornerShape(4.dp)
-                                        ) {
-                                            Text(
-                                                "CASH",
-                                                fontSize   = 10.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color      = Color.White,
-                                                modifier   = Modifier.padding(8.dp, 2.dp)
-                                            )
-                                        }
-                                        Spacer(Modifier.height(4.dp))
-                                        Text(
-                                            "Hand-to-Hand",
-                                            fontSize   = 14.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color      = Color(0xFF0F172A)
-                                        )
-                                        Text(
-                                            "Pay directly to admin",
-                                            fontSize = 11.sp,
-                                            color    = Color(0xFF64748B)
-                                        )
-                                    }
-                                }
-                            } else {
-                                accounts.filter { it.enabled }.forEach { acc ->
-                                    Surface(
-                                        shape    = RoundedCornerShape(10.dp),
-                                        color    = Color.White,
-                                        border   = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
-                                    ) {
-                                        Column(Modifier.padding(12.dp)) {
-                                            Surface(
-                                                color = Color(0xFF2563EB),
-                                                shape = RoundedCornerShape(4.dp)
-                                            ) {
-                                                Text(
-                                                    method.uppercase(),
-                                                    fontSize   = 10.sp,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color      = Color.White,
-                                                    modifier   = Modifier.padding(8.dp, 2.dp)
-                                                )
-                                            }
-                                            Spacer(Modifier.height(4.dp))
-                                            Text(
-                                                acc.label,
-                                                fontSize      = 11.sp,
-                                                fontWeight    = FontWeight.SemiBold,
-                                                color         = Color(0xFF64748B),
-                                                letterSpacing = 0.025.sp
-                                            )
-                                            Text(
-                                                acc.number,
-                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                                fontSize   = 18.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color      = Color(0xFF0F172A)
-                                            )
-                                        }
-                                    }
-                                }
+                    uiState.orgLogoUrl?.let {
+                        Surface(
+                            Modifier.size(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF2563EB)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("🏦", fontSize = 22.sp)
                             }
                         }
+                        Spacer(Modifier.width(14.dp))
+                    }
+                    Column {
+                        Text(
+                            "Pay Installment",
+                            fontSize   = 24.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color      = Color(0xFF0F172A)
+                        )
+                        Text(
+                            "${uiState.orgName}${if (uiState.monthlyEnabled) " · Monthly: ${fmtAmt(uiState.baseAmount)}" else ""}",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color    = Color(0xFF64748B)
+                        )
                     }
                 }
-            }
 
-            // ── Mode switcher ──
-            if (uiState.monthlyEnabled && uiState.hasSpecialSubs) {
-                Row(
-                    Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ModeTab(
-                        "📅 Monthly Installment",
-                        uiState.payMode == PayMode.MONTHLY,
-                        Modifier.weight(1f)
-                    ) { vm.setPayMode(PayMode.MONTHLY) }
-                    ModeTab(
-                        "🎯 Special Subscription",
-                        uiState.payMode == PayMode.SPECIAL,
-                        Modifier.weight(1f)
-                    ) { vm.setPayMode(PayMode.SPECIAL) }
+                // ── Payments paused ──
+                if (!uiState.hasAnything) {
+                    Card(
+                        shape    = RoundedCornerShape(16.dp),
+                        colors   = CardDefaults.cardColors(containerColor = Color.White),
+                        border   = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            Modifier.padding(48.dp, 48.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("⏸️", fontSize = 36.sp)
+                            Spacer(Modifier.height(16.dp))
+                            Text("Payments paused", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF0F172A))
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Monthly installments are currently disabled.",
+                                fontSize = 14.sp,
+                                color    = Color(0xFF64748B),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                    return@PullToRefreshBox
                 }
-            }
 
-            // ── Month picker ──
-            if (uiState.payMode == PayMode.MONTHLY && uiState.monthlyEnabled) {
-                MonthPickerCard(
-                    unpaidMonths = unpaidMonths,
-                    selected     = uiState.selectedMonths,
-                    penalty      = uiState.penalty,
-                    onToggle     = { vm.toggleMonth(it) }
-                )
-            }
+                // ── Banners ──
+                if (uiState.isImpersonating) {
+                    InfoBanner(bg = Color(0xFFFEF3C7), border= Color(0xFFFDE68A), text = "👤 Viewing as member — Payment submission is disabled.")
+                }
+                if (uiState.isLatePayer) {
+                    InfoBanner(bg = Color(0xFFFEF2F2), border = Color(0xFFFCA5A5), title = "⚠️ You are marked as a Late Payer", text = "You have ${uiState.missedCount} unpaid month${if (uiState.missedCount != 1) "s" else ""}. Please pay overdue installments.", titleColor = Color(0xFFB91C1C), textColor = Color(0xFF7F1D1D))
+                }
+                if (uiState.reregistrationPending) {
+                    InfoBanner(bg = Color(0xFFFEF3C7), border = Color(0xFFFDE68A), title = "🔄 Re-Registration Fee Required", text = "Due to ${uiState.missedCount} unpaid months, a re-registration fee has been assigned. Contact admin if this is an error.", titleColor = Color(0xFF92400E), textColor = Color(0xFF78350F))
+                }
+                if (uiState.reregistrationGranted) {
+                    InfoBanner(bg = Color(0xFFF0FDF4), border = Color(0xFF86EFAC), text = "✅ Re-registration fee waived — your admin has granted a rebate.", textColor = Color(0xFF15803D))
+                }
 
-            // ── Special subs ──
-            if (uiState.payMode == PayMode.SPECIAL ||
-                (!uiState.monthlyEnabled && specialSubs.isNotEmpty())) {
-                SpecialSubsCard(
-                    subs           = specialSubs,
-                    paidSpecial    = uiState.paidSpecialIds,
-                    selectedSub    = uiState.selectedSpecial,
-                    customAmount   = uiState.customSpecialAmount,
-                    onSelect       = { vm.selectSpecialSub(it) },
-                    onCustomAmount = { vm.setCustomAmount(it) }
-                )
-            }
+                // ── Mode switcher ──
+                if (uiState.monthlyEnabled && uiState.hasSpecialSubs) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ModeTab("📅 Monthly Installment", uiState.payMode == PayMode.MONTHLY, Modifier.weight(1f)) { vm.setPayMode(PayMode.MONTHLY) }
+                        ModeTab("🎯 Special Subscription", uiState.payMode == PayMode.SPECIAL, Modifier.weight(1f)) { vm.setPayMode(PayMode.SPECIAL) }
+                    }
+                }
 
-            // ── Payment method card ──
-            val showPayment = (uiState.payMode == PayMode.MONTHLY && uiState.selectedMonths.isNotEmpty()) ||
-                              (uiState.payMode == PayMode.SPECIAL && uiState.selectedSpecial != null)
-            if (showPayment) {
-                PaymentMethodCard(
-                    enabledMethods  = uiState.enabledMethods,
-                    selectedMethod  = uiState.selectedMethod,
-                    methodAccounts  = uiState.currentMethodAccounts,
-                    selectedAccount = uiState.selectedAccount,
-                    txId            = uiState.txId,
-                    receiptUri      = uiState.receiptUri,
-                    receiptName     = uiState.receiptName,
-                    totalBase       = uiState.totalBase,
-                    totalPenalty    = uiState.totalPenalty,
-                    fee             = uiState.fee,
-                    grandTotal      = uiState.grandTotal,
-                    feeRate         = uiState.feeRate,
-                    selectedMonths  = uiState.selectedMonths,
-                    baseAmount      = uiState.baseAmount,
-                    selectedSub     = uiState.selectedSpecial,
-                    payMode         = uiState.payMode,
-                    loading         = uiState.loading,
-                    isUploadingReceipt = uiState.isUploadingReceipt,
-                    isImpersonating = uiState.isImpersonating,
-                    onSelectMethod  = { vm.selectMethod(it) },
-                    onSelectAccount = { vm.selectAccount(it) },
-                    onTxIdChange    = { vm.setTxId(it) },
-                    onReceiptPicked = { uri, name, mime -> vm.setReceiptUri(uri, name, mime) },
-                    onReceiptCleared = { vm.clearReceipt() },
-                    onSubmit        = { vm.submitPayment(context) }
-                )
+                // ── Form Step Logic ──
+                val step1Complete = uiState.selectedMonths.isNotEmpty() || uiState.selectedSpecial != null
+                val step2Complete = step1Complete && uiState.selectedMethod.isNotEmpty() && (uiState.selectedMethod == "Cash" || uiState.currentMethodAccounts.size <= 1 || uiState.selectedAccount != null)
+                val step3Complete = step2Complete && (uiState.selectedMethod == "Cash" || uiState.receiptUri != null || uiState.txId.isNotBlank())
+
+                val alphaStep2 by animateFloatAsState(if (step1Complete) 1f else 0.4f, label = "a2")
+                val alphaStep3 by animateFloatAsState(if (step2Complete) 1f else 0.4f, label = "a3")
+                val alphaStep4 by animateFloatAsState(if (step3Complete) 1f else 0.4f, label = "a4")
+
+                // ── STEP 1: Select Installment ──
+                Column(Modifier.padding(bottom = 24.dp)) {
+                    StepHeader(1, if (uiState.payMode == PayMode.MONTHLY) "Select Installment Month" else "Select Subscription")
+                    if (uiState.payMode == PayMode.MONTHLY && uiState.monthlyEnabled) {
+                        MonthPickerCard(
+                            unpaidMonths = unpaidMonths,
+                            selected     = uiState.selectedMonths,
+                            penalty      = uiState.penalty,
+                            onToggle     = { vm.toggleMonth(it) }
+                        )
+                    } else {
+                        SpecialSubsCard(
+                            subs           = specialSubs,
+                            paidSpecial    = uiState.paidSpecialIds,
+                            selectedSub    = uiState.selectedSpecial,
+                            customAmount   = uiState.customSpecialAmount,
+                            onSelect       = { vm.selectSpecialSub(it) },
+                            onCustomAmount = { vm.setCustomAmount(it) }
+                        )
+                    }
+                }
+
+                // ── STEP 2: Payment Method ──
+                Column(Modifier.alpha(alphaStep2).padding(bottom = 24.dp)) {
+                    StepHeader(2, "Payment Method")
+                    PaymentMethodSection(
+                        enabledMethods  = uiState.enabledMethods,
+                        selectedMethod  = uiState.selectedMethod,
+                        methodAccounts  = uiState.currentMethodAccounts,
+                        selectedAccount = uiState.selectedAccount,
+                        isStepEnabled   = step1Complete,
+                        onSelectMethod  = { if (step1Complete) vm.selectMethod(it) },
+                        onSelectAccount = { if (step1Complete) vm.selectAccount(it) }
+                    )
+                }
+
+                // ── STEP 3: Proof of Payment (Hidden if Cash) ──
+                val requiresProof = uiState.selectedMethod.isNotEmpty() && uiState.selectedMethod != "Cash"
+                if (requiresProof) {
+                    Column(Modifier.alpha(alphaStep3).padding(bottom = 24.dp)) {
+                        StepHeader(3, "Proof of Payment")
+                        ProofOfPaymentSection(
+                            receiptUri       = uiState.receiptUri,
+                            receiptName      = uiState.receiptName,
+                            txId             = uiState.txId,
+                            selectedMethod   = uiState.selectedMethod,
+                            isStepEnabled    = step2Complete,
+                            onReceiptPicked  = { uri, name, mime -> if (step2Complete) vm.setReceiptUri(uri, name, mime) },
+                            onReceiptCleared = { if (step2Complete) vm.clearReceipt() },
+                            onTxIdChange     = { if (step2Complete) vm.setTxId(it) }
+                        )
+                    }
+                }
+
+                // ── STEP 4: Review & Submit ──
+                val finalStepNum = if (requiresProof) 4 else 3
+                Column(Modifier.alpha(alphaStep4).padding(bottom = 24.dp)) {
+                    StepHeader(finalStepNum, "Review & Submit")
+                    ReviewAndSubmitCard(
+                        uiState = uiState,
+                        isStepEnabled = step3Complete,
+                        onSubmit = { vm.submitPayment(context) }
+                    )
+                }
             }
         }
     }
 }
 
-// ── Receipt Picker Section ────────────────────────────────────────────────────
+// ── Refined Step Sections ─────────────────────────────────────────────────────
 
 @Composable
-fun ReceiptPickerSection(
-    receiptUri:      Uri?,
-    receiptName:     String,
-    txId:            String,
+fun StepHeader(step: Int, title: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
+        Surface(
+            shape = CircleShape,
+            color = Color(0xFFDBEAFE),
+            modifier = Modifier.size(26.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(step.toString(), color = Color(0xFF1D4ED8), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF0F172A))
+    }
+}
+
+@Composable
+fun PaymentMethodSection(
+    enabledMethods: List<String>,
+    selectedMethod: String,
+    methodAccounts: List<PaymentAccount>,
+    selectedAccount: PaymentAccount?,
+    isStepEnabled: Boolean,
+    onSelectMethod: (String) -> Unit,
+    onSelectAccount: (PaymentAccount?) -> Unit
+) {
+    Surface(shape = RoundedCornerShape(16.dp), color = Color.White, border = BorderStroke(1.dp, Color(0xFFE2E8F0)), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 16.dp)) {
+                items(enabledMethods.size) { i ->
+                    val m = enabledMethods[i]
+                    val sel = m == selectedMethod
+                    Surface(
+                        onClick = { onSelectMethod(m) },
+                        enabled = isStepEnabled, // Lint Fix: Ensures isStepEnabled is used
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (sel) Color(0xFFEFF6FF) else Color.White,
+                        border = BorderStroke(if (sel) 1.5.dp else 1.dp, if (sel) Color(0xFF2563EB) else Color(0xFFE2E8F0))
+                    ) {
+                        Text(m, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (sel) Color(0xFF1D4ED8) else Color(0xFF475569))
+                    }
+                }
+            }
+
+            if (selectedMethod == "Cash") {
+                Surface(color = Color(0xFFEFF6FF), shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Color(0xFFBFDBFE)), modifier = Modifier.fillMaxWidth()) {
+                    Text("Pay cash directly to your organization admin. No receipt required.", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xFF1E40AF), modifier = Modifier.padding(14.dp))
+                }
+            }
+
+            if (selectedMethod.isNotEmpty() && selectedMethod != "Cash" && methodAccounts.isNotEmpty()) {
+                Text("Which account did you send to? *", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A), modifier = Modifier.padding(bottom = 10.dp))
+                methodAccounts.filter { it.enabled }.forEach { acc ->
+                    val isSel = selectedAccount?.id == acc.id
+                    Surface(
+                        onClick = { onSelectAccount(if (isSel) null else acc) },
+                        enabled = isStepEnabled, // Lint Fix: Ensures isStepEnabled is used
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSel) Color(0xFFEFF6FF) else Color(0xFFF8FAFC),
+                        border = BorderStroke(if (isSel) 1.5.dp else 1.dp, if (isSel) Color(0xFF2563EB) else Color(0xFFE2E8F0)),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    ) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (methodAccounts.size > 1) {
+                                Box(modifier = Modifier.size(18.dp).clip(CircleShape).border(2.dp, if (isSel) Color(0xFF2563EB) else Color(0xFF94A3B8), CircleShape), contentAlignment = Alignment.Center) {
+                                    if (isSel) Box(Modifier.size(10.dp).clip(CircleShape).background(Color(0xFF2563EB)))
+                                }
+                                Spacer(Modifier.width(12.dp))
+                            } else {
+                                Box(modifier = Modifier.size(36.dp).clip(CircleShape).background(Color(0xFFDBEAFE)), contentAlignment = Alignment.Center) { Text("🏦", fontSize = 16.sp) }
+                                Spacer(Modifier.width(12.dp))
+                            }
+                            Column {
+                                Text(acc.label.ifEmpty { selectedMethod }, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (isSel) Color(0xFF1D4ED8) else Color(0xFF0F172A))
+                                Spacer(Modifier.height(2.dp))
+                                Text(acc.number, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, fontSize = 15.sp, color = Color(0xFF475569), fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ProofOfPaymentSection(
+    receiptUri: Uri?,
+    receiptName: String,
+    txId: String,
+    selectedMethod: String,
+    isStepEnabled: Boolean,
     onReceiptPicked: (Uri, String, String) -> Unit,
     onReceiptCleared: () -> Unit,
+    onTxIdChange: (String) -> Unit
 ) {
     val context = LocalContext.current
-
-    // Image picker launcher
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
+    val isUploaded = receiptUri != null
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        // Resolve name and MIME type
-        var name     = uri.lastPathSegment ?: "receipt.jpg"
-        var mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+
+        val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+        var resolvedName: String? = null // Lint fix: modified properly below
+
         context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) {
                 val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                if (nameIdx >= 0) name = cursor.getString(nameIdx) ?: name
+                if (nameIdx >= 0) resolvedName = cursor.getString(nameIdx)
             }
         }
-        onReceiptPicked(uri, name, mimeType)
+        val finalName = resolvedName ?: uri.lastPathSegment ?: "receipt.jpg"
+
+        onReceiptPicked(uri, finalName, mimeType)
     }
 
-    Column {
-        Text(
-            "Payment Receipt (Upload screenshot)",
-            fontSize   = 11.sp,
-            fontWeight = FontWeight.Bold,
-            color      = Color(0xFF374151),
-            modifier   = Modifier.padding(bottom = 6.dp)
-        )
+    Surface(shape = RoundedCornerShape(16.dp), color = Color.White, border = BorderStroke(1.dp, Color(0xFFE2E8F0)), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Payment Receipt (Upload screenshot)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A), modifier = Modifier.padding(bottom = 8.dp))
 
-        if (receiptUri != null) {
-            // ── Confirmed state ──
-            Surface(
-                shape    = RoundedCornerShape(8.dp),
-                color    = Color(0xFFF0FDF4),
-                border   = BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                modifier = Modifier.fillMaxWidth()
+            val dashStroke = Stroke(width = 4f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(20f, 20f), 0f))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+                    .drawBehind { if (!isUploaded) drawRoundRect(color = Color(0xFFCBD5E1), style = dashStroke, cornerRadius = CornerRadius(12.dp.toPx())) }
+                    .background(if (isUploaded) Color(0xFFF0FDF4) else Color.Transparent, RoundedCornerShape(12.dp))
+                    .border(if (isUploaded) 1.dp else 0.dp, if (isUploaded) Color(0xFFBBF7D0) else Color.Transparent, RoundedCornerShape(12.dp))
+                    .clickable(enabled = isStepEnabled) { if (!isUploaded) launcher.launch("image/*") }
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Row(
-                    Modifier.padding(10.dp, 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Thumbnail
-                    Surface(
-                        shape  = RoundedCornerShape(6.dp),
-                        border = BorderStroke(1.dp, Color(0xFFD1FAE5)),
-                        modifier = Modifier.size(52.dp)
-                    ) {
-                        AsyncImage(
-                            model             = receiptUri,
-                            contentDescription = "Receipt preview",
-                            contentScale      = ContentScale.Crop,
-                            modifier          = Modifier.fillMaxSize()
-                        )
+                if (isUploaded) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        AsyncImage(model = receiptUri, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, Color(0xFFD1FAE5), RoundedCornerShape(8.dp)))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("✓ Receipt attached", color = Color(0xFF15803D), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(receiptName.ifEmpty { "receipt_image.jpg" }, color = Color(0xFF64748B), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Surface(onClick = onReceiptCleared, shape = RoundedCornerShape(6.dp), color = Color(0xFFFEE2E2)) {
+                            Text("Remove", color = Color(0xFFB91C1C), fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                        }
                     }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            "✓ Receipt selected",
-                            fontSize   = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color      = Color(0xFF15803D)
-                        )
-                        Text(
-                            receiptName.ifBlank { "receipt" },
-                            fontSize  = 11.sp,
-                            color     = Color(0xFF64748B),
-                            maxLines  = 1,
-                            overflow  = TextOverflow.Ellipsis
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Surface(
-                        onClick = onReceiptCleared,
-                        shape   = RoundedCornerShape(6.dp),
-                        color   = Color(0xFFFEE2E2)
-                    ) {
-                        Text(
-                            "Remove",
-                            fontSize   = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color      = Color(0xFFB91C1C),
-                            modifier   = Modifier.padding(10.dp, 4.dp)
-                        )
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("📎", fontSize = 24.sp)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Tap to upload receipt image", color = Color(0xFF64748B), fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }
-        } else {
-            // ── Upload button ──
-            Surface(
-                onClick  = { launcher.launch("image/*") },
-                shape    = RoundedCornerShape(8.dp),
-                color    = Color(0xFFF8FAFC),
-                border   = BorderStroke(1.5.dp, Color(0xFFCBD5E1)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier         = Modifier.padding(vertical = 16.dp)
-                ) {
-                    Text(
-                        "📎  Tap to upload receipt image",
-                        fontSize   = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color      = Color(0xFF64748B)
-                    )
-                }
-            }
-        }
 
-        // Validation hint — shown when neither txId nor receipt provided
-        if (txId.isBlank() && receiptUri == null) {
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "⚠️ Please upload Payment receipt or Transaction ID — at least one is required.",
-                fontSize = 11.sp,
-                color    = Color(0xFFDC2626)
+            Text("Transaction ID (TxID) ${if (isUploaded) "(optional)" else ""}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A), modifier = Modifier.padding(bottom = 8.dp))
+            OutlinedTextField(
+                value = txId,
+                onValueChange = onTxIdChange,
+                enabled = isStepEnabled, // Lint Fix: Ensures isStepEnabled is used
+                placeholder = { Text("Paste your $selectedMethod transaction ID", fontSize = 13.sp, color = Color(0xFF94A3B8)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color(0xFFE2E8F0), focusedBorderColor = Color(0xFF2563EB))
             )
+        }
+    }
+}
+
+@Composable
+fun ReviewAndSubmitCard(
+    uiState: InstallmentUiState,
+    isStepEnabled: Boolean,
+    onSubmit: () -> Unit
+) {
+    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(20.dp)) {
+            val label = if (uiState.payMode == PayMode.MONTHLY) "Installment (${uiState.selectedMonths.size}x)" else uiState.selectedSpecial?.title ?: "Payment"
+
+            Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(label, color = Color(0xFF94A3B8), fontSize = 14.sp)
+                Text(fmtAmt(uiState.totalBase), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            }
+            if (uiState.totalPenalty > 0) {
+                Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Late fee", color = Color(0xFFFCA5A5), fontSize = 14.sp)
+                    Text(fmtAmt(uiState.totalPenalty), color = Color(0xFFFCA5A5), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+            if (uiState.fee > 0) {
+                Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Gateway Fee (${"%.2f".format(uiState.feeRate * 100)}%)", color = Color(0xFF94A3B8), fontSize = 14.sp)
+                    Text(fmtAmt(uiState.fee), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+            HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color(0xFF334155))
+            Row(Modifier.fillMaxWidth().padding(bottom = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Total to send", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(fmtAmt(uiState.grandTotal), color = Color(0xFF60A5FA), fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+            }
+
+            Button(
+                onClick = onSubmit,
+                enabled = isStepEnabled && !uiState.loading && !uiState.isImpersonating,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB), disabledContainerColor = Color(0xFF1E293B)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp)
+            ) {
+                if (uiState.loading) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Text(if (uiState.isUploadingReceipt) "Uploading receipt..." else "Submitting...", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                } else {
+                    Text(if (uiState.isImpersonating) "Disabled in Impersonation Mode" else "Submit Payment — ${fmtAmt(uiState.grandTotal)}", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+            }
         }
     }
 }
@@ -474,84 +497,45 @@ fun ReceiptPickerSection(
 
 @Composable
 fun SuccessScreen(onPayAgain: () -> Unit, onViewLedger: () -> Unit) {
-    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-        Card(shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Surface(
-                    color    = Color(0xFFDCFCE7),
-                    shape    = RoundedCornerShape(50.dp),
-                    modifier = Modifier.size(56.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("✓", fontSize = 24.sp, color = Color(0xFF15803D))
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    "Payment Submitted!",
-                    fontWeight = FontWeight.Bold,
-                    fontSize   = 18.sp,
-                    color      = Color(0xFF0F172A)
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Your payment has been recorded. An admin will verify it shortly.",
-                    fontSize  = 13.sp,
-                    color     = Color(0xFF64748B),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-                Spacer(Modifier.height(20.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(
-                        onClick = onPayAgain,
-                        shape   = RoundedCornerShape(8.dp),
-                        colors  = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A))
-                    ) { Text("Pay Again") }
-                    OutlinedButton(
-                        onClick = onViewLedger,
-                        shape   = RoundedCornerShape(8.dp)
-                    ) { Text("View Ledger") }
-                }
+    Box(Modifier.fillMaxSize().background(Color(0xFFF8FAFC)).padding(24.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.size(96.dp).background(Color(0xFFDCFCE7), CircleShape).border(6.dp, Color(0xFFF0FDF4), CircleShape), contentAlignment = Alignment.Center) {
+                Text("✓", fontSize = 48.sp, color = Color(0xFF16A34A), fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(28.dp))
+            Text("Payment Submitted!", fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, color = Color(0xFF0F172A))
+            Spacer(Modifier.height(8.dp))
+            Text("Your payment has been recorded.\nAn admin will verify it shortly.", fontSize = 15.sp, color = Color(0xFF64748B), textAlign = androidx.compose.ui.text.style.TextAlign.Center, lineHeight = 22.sp)
+            Spacer(Modifier.height(40.dp))
+            Button(onClick = onPayAgain, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(54.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A))) {
+                Text("Pay Another Installment", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(onClick = onViewLedger, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(54.dp), border = BorderStroke(1.dp, Color(0xFFE2E8F0))) {
+                Text("View My Ledger", fontWeight = FontWeight.Bold, color = Color(0xFF0F172A), fontSize = 15.sp)
             }
         }
     }
 }
 
-// ── Month Picker Card ─────────────────────────────────────────────────────────
+// ── Shared Composables ────────────────────────────────────────
 
 @Composable
-fun MonthPickerCard(
-    unpaidMonths: List<String>,
-    selected:     Set<String>,
-    penalty:      Double,
-    onToggle:     (String) -> Unit
-) {
-    Card(shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+fun MonthPickerCard(unpaidMonths: List<String>, selected: Set<String>, penalty: Double, onToggle: (String) -> Unit) {
+    Surface(shape = RoundedCornerShape(16.dp), color = Color.White, border = BorderStroke(1.dp, Color(0xFFE2E8F0)), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
-            Text("Select Months to Pay", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-            Text(
-                "Only unpaid months are shown.",
-                fontSize = 12.sp,
-                color    = Color(0xFF94A3B8),
-                modifier = Modifier.padding(bottom = 14.dp)
-            )
-
+            Text("Select Months to Pay", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color(0xFF0F172A))
+            Text("Only unpaid months are shown.", fontSize = 12.sp, color = Color(0xFF94A3B8), modifier = Modifier.padding(bottom = 16.dp))
             if (unpaidMonths.isEmpty()) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier            = Modifier.fillMaxWidth().padding(vertical = 24.dp)
-                ) {
-                    Text("🎉", fontSize = 28.sp)
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp)) {
+                    Text("🎉", fontSize = 32.sp)
                     Spacer(Modifier.height(8.dp))
-                    Text("All caught up!", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Text("No pending months to pay.", fontSize = 13.sp, color = Color(0xFF94A3B8))
+                    Text("All caught up!", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF0F172A))
+                    Text("No pending months to pay.", fontSize = 14.sp, color = Color(0xFF94A3B8))
                 }
             } else {
                 unpaidMonths.chunked(2).forEach { row ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         row.forEach { month ->
                             val isSel = month in selected
                             val isLate = run {
@@ -559,34 +543,12 @@ fun MonthPickerCard(
                                 val y = parts[0].toIntOrNull() ?: 0
                                 val m = parts[1].toIntOrNull() ?: 0
                                 val cal = java.util.Calendar.getInstance()
-                                cal.time > java.util.Calendar.getInstance()
-                                    .apply { set(y, m - 1, 10) }.time
+                                cal.time > java.util.Calendar.getInstance().apply { set(y, m - 1, 10) }.time
                             }
-                            Surface(
-                                onClick  = { onToggle(month) },
-                                shape    = RoundedCornerShape(8.dp),
-                                color    = if (isSel) Color(0xFFEFF6FF) else Color.White,
-                                border   = BorderStroke(
-                                    if (isSel) 2.dp else 1.dp,
-                                    if (isSel) Color(0xFF2563EB) else Color(0xFFE2E8F0)
-                                ),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Column(Modifier.padding(10.dp)) {
-                                    Text(
-                                        month.replace("-", " / "),
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize   = 12.sp,
-                                        color      = if (isSel) Color(0xFF1D4ED8) else Color(0xFF475569)
-                                    )
-                                    if (isLate && penalty > 0) {
-                                        Text(
-                                            "+ ${fmtAmt(penalty)} late fee",
-                                            fontSize = 10.sp,
-                                            color    = if (isSel) Color(0xFF1D4ED8) else Color(0xFFF59E0B),
-                                            modifier = Modifier.padding(top = 2.dp)
-                                        )
-                                    }
+                            Surface(onClick = { onToggle(month) }, shape = RoundedCornerShape(10.dp), color = if (isSel) Color(0xFFEFF6FF) else Color.White, border = BorderStroke(if (isSel) 1.5.dp else 1.dp, if (isSel) Color(0xFF2563EB) else Color(0xFFE2E8F0)), modifier = Modifier.weight(1f)) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text(month.replace("-", " / "), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = if (isSel) Color(0xFF1D4ED8) else Color(0xFF475569))
+                                    if (isLate && penalty > 0) Text("+ ${fmtAmt(penalty)} late fee", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = if (isSel) Color(0xFF1D4ED8) else Color(0xFFF59E0B), modifier = Modifier.padding(top = 4.dp))
                                 }
                             }
                         }
@@ -598,152 +560,39 @@ fun MonthPickerCard(
     }
 }
 
-// ── Special Subs Card ─────────────────────────────────────────────────────────
-
 @Composable
-fun SpecialSubsCard(
-    subs:           List<SpecialSub>,
-    paidSpecial:    Set<String>,
-    selectedSub:    SpecialSub?,
-    customAmount:   String,
-    onSelect:       (SpecialSub?) -> Unit,
-    onCustomAmount: (String) -> Unit
-) {
+fun SpecialSubsCard(subs: List<SpecialSub>, paidSpecial: Set<String>, selectedSub: SpecialSub?, customAmount: String, onSelect: (SpecialSub?) -> Unit, onCustomAmount: (String) -> Unit) {
     val unpaid = subs.filter { it.id !in paidSpecial }
-    Card(
-        shape    = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
-    ) {
+    Surface(shape = RoundedCornerShape(16.dp), color = Color.White, border = BorderStroke(1.dp, Color(0xFFE2E8F0)), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
-            Text("Special Subscriptions", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-            Text(
-                "Select one to pay.",
-                fontSize = 12.sp,
-                color    = Color(0xFF94A3B8),
-                modifier = Modifier.padding(bottom = 14.dp)
-            )
-
+            Text("Special Subscriptions", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color(0xFF0F172A))
+            Text("Select one to pay.", fontSize = 12.sp, color = Color(0xFF94A3B8), modifier = Modifier.padding(bottom = 16.dp))
             if (unpaid.isEmpty()) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier            = Modifier.fillMaxWidth().padding(vertical = 24.dp)
-                ) {
-                    Text("✅", fontSize = 28.sp)
-                    Text(
-                        "No pending special subscriptions.",
-                        fontSize = 13.sp,
-                        color    = Color(0xFF94A3B8)
-                    )
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp)) {
+                    Text("✅", fontSize = 32.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text("No pending special subscriptions.", fontSize = 14.sp, color = Color(0xFF94A3B8))
                 }
             } else {
                 unpaid.forEach { sub ->
                     val isSel = selectedSub?.id == sub.id
-                    Surface(
-                        onClick  = { onSelect(if (isSel) null else sub) },
-                        shape    = RoundedCornerShape(10.dp),
-                        color    = Color.White,
-                        border   = BorderStroke(
-                            if (isSel) 2.dp else 1.dp,
-                            if (isSel) Color(0xFF2563EB) else Color(0xFFB9BCC2)
-                        ),
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-                    ) {
+                    Surface(onClick = { onSelect(if (isSel) null else sub) }, shape = RoundedCornerShape(12.dp), color = if (isSel) Color(0xFFEFF6FF) else Color.White, border = BorderStroke(if (isSel) 1.5.dp else 1.dp, if (isSel) Color(0xFF2563EB) else Color(0xFFE2E8F0)), modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                         Column(Modifier.padding(14.dp)) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment     = Alignment.Top
-                            ) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(
-                                        sub.title,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize   = 13.sp,
-                                        color      = if (isSel) Color(0xFF1D4ED8) else Color(0xFF0F172A)
-                                    )
-                                    if (sub.description.isNotEmpty()) {
-                                        Text(
-                                            sub.description,
-                                            fontSize = 12.sp,
-                                            color    = Color(0xFF64748B),
-                                            modifier = Modifier.padding(top = 3.dp)
-                                        )
-                                    }
-                                    Text(
-                                        "Due: ${sub.deadline} (${if (sub.daysLeft > 0) "${sub.daysLeft} day${if (sub.daysLeft != 1) "s" else ""} left" else "Today!"})",
-                                        fontSize   = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color      = if (sub.daysLeft <= 3) Color(0xFFDC2626) else Color(0xFFF59E0B),
-                                        modifier   = Modifier.padding(top = 4.dp)
-                                    )
+                                    Text(sub.title, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (isSel) Color(0xFF1D4ED8) else Color(0xFF0F172A))
+                                    if (sub.description.isNotEmpty()) Text(sub.description, fontSize = 13.sp, color = Color(0xFF64748B), modifier = Modifier.padding(top = 4.dp))
+                                    Text("Due: ${sub.deadline} (${if (sub.daysLeft > 0) "${sub.daysLeft} day${if (sub.daysLeft != 1) "s" else ""} left" else "Today!"})", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = if (sub.daysLeft <= 3) Color(0xFFDC2626) else Color(0xFFF59E0B), modifier = Modifier.padding(top = 6.dp))
                                     if (sub.type == "entry_fee" || sub.type == "reregistration_fee") {
-                                        Spacer(Modifier.height(5.dp))
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            TypeBadge(
-                                                if (sub.type == "entry_fee") "Entry Fee" else "Re-Registration Fee",
-                                                Color(0xFFDBEAFE), Color(0xFF1D4ED8)
-                                            )
-                                            TypeBadge("→ Expenses Fund", Color(0xFFFEF3C7), Color(0xFF92400E))
-                                        }
-                                    }
-                                    if (sub.allowCustomAmount) {
-                                        Text(
-                                            "✏️ Pay any amount you choose",
-                                            fontSize   = 11.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color      = Color(0xFF7C3AED),
-                                            modifier   = Modifier.padding(top = 3.dp)
-                                        )
+                                        Spacer(Modifier.height(6.dp))
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { TypeBadge(if (sub.type == "entry_fee") "Entry Fee" else "Re-Registration", Color(0xFFDBEAFE), Color(0xFF1D4ED8)) }
                                     }
                                 }
-                                Text(
-                                    if (sub.allowCustomAmount) "${fmtAmt(sub.amount)}+" else fmtAmt(sub.amount),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize   = 16.sp,
-                                    color      = if (isSel) Color(0xFF1D4ED8) else Color(0xFF2563EB)
-                                )
+                                Text(if (sub.allowCustomAmount) "${fmtAmt(sub.amount)}+" else fmtAmt(sub.amount), fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = if (isSel) Color(0xFF1D4ED8) else Color(0xFF2563EB))
                             }
-
-                            // Custom amount input
                             if (isSel && sub.allowCustomAmount) {
-                                Spacer(Modifier.height(10.dp))
-                                Surface(
-                                    color    = Color(0xFFFAF5FF),
-                                    shape    = RoundedCornerShape(8.dp),
-                                    border   = BorderStroke(1.dp, Color(0xFFDDD6FE)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(Modifier.padding(12.dp)) {
-                                        Text(
-                                            "Enter your contribution amount",
-                                            fontSize   = 11.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color      = Color(0xFF7C3AED),
-                                            modifier   = Modifier.padding(bottom = 6.dp)
-                                        )
-                                        OutlinedTextField(
-                                            value         = customAmount,
-                                            onValueChange = onCustomAmount,
-                                            prefix        = {
-                                                Text(
-                                                    "৳",
-                                                    fontWeight = FontWeight.Bold,
-                                                    color      = Color(0xFF7C3AED)
-                                                )
-                                            },
-                                            placeholder   = { Text("Suggested: ${fmtAmt(sub.amount)}") },
-                                            singleLine    = true,
-                                            modifier      = Modifier.fillMaxWidth(),
-                                            shape         = RoundedCornerShape(8.dp)
-                                        )
-                                        Text(
-                                            "Suggested: ${fmtAmt(sub.amount)}. You can pay more or less.",
-                                            fontSize = 11.sp,
-                                            color    = Color(0xFF7C3AED),
-                                            modifier = Modifier.padding(top = 6.dp)
-                                        )
-                                    }
-                                }
+                                Spacer(Modifier.height(12.dp))
+                                OutlinedTextField(value = customAmount, onValueChange = onCustomAmount, prefix = { Text("৳ ", fontWeight = FontWeight.Bold, color = Color(0xFF0F172A)) }, placeholder = { Text("Suggested: ${fmtAmt(sub.amount)}") }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF2563EB)))
                             }
                         }
                     }
@@ -752,384 +601,25 @@ fun SpecialSubsCard(
         }
     }
 }
-
-// ── Payment Method Card ───────────────────────────────────────────────────────
-
-@Composable
-fun PaymentMethodCard(
-    enabledMethods:    List<String>,
-    selectedMethod:    String,
-    methodAccounts:    List<PaymentAccount>,
-    selectedAccount:   PaymentAccount?,
-    txId:              String,
-    receiptUri:        Uri?,
-    receiptName:       String,
-    totalBase:         Double,
-    totalPenalty:      Double,
-    fee:               Double,
-    grandTotal:        Double,
-    feeRate:           Double,
-    selectedMonths:    Set<String>,
-    baseAmount:        Double,
-    selectedSub:       SpecialSub?,
-    payMode:           PayMode,
-    loading:           Boolean,
-    isUploadingReceipt: Boolean,
-    isImpersonating:   Boolean,
-    onSelectMethod:    (String) -> Unit,
-    onSelectAccount:   (PaymentAccount?) -> Unit,
-    onTxIdChange:      (String) -> Unit,
-    onReceiptPicked:   (Uri, String, String) -> Unit,
-    onReceiptCleared:  () -> Unit,
-    onSubmit:          () -> Unit,
-) {
-    val needsAccountPick = methodAccounts.size > 1 && selectedAccount == null
-
-    Card(
-        shape    = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(
-                "Payment Method",
-                fontWeight = FontWeight.SemiBold,
-                fontSize   = 14.sp,
-                modifier   = Modifier.padding(bottom = 14.dp)
-            )
-
-            // Method chips
-            androidx.compose.foundation.lazy.LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier              = Modifier.padding(bottom = 16.dp)
-            ) {
-                items(enabledMethods.size) { i ->
-                    val m   = enabledMethods[i]
-                    val sel = m == selectedMethod
-                    Surface(
-                        onClick  = { onSelectMethod(m) },
-                        shape    = RoundedCornerShape(8.dp),
-                        color    = if (sel) Color(0xFFEFF6FF) else Color.White,
-                        border   = BorderStroke(
-                            if (sel) 2.dp else 1.dp,
-                            if (sel) Color(0xFF2563EB) else Color(0xFFE2E8F0)
-                        )
-                    ) {
-                        Text(
-                            m,
-                            modifier   = Modifier.padding(18.dp, 9.dp),
-                            fontSize   = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            color      = if (sel) Color(0xFF1D4ED8) else Color(0xFF475569)
-                        )
-                    }
-                }
-            }
-
-            // Multi-account picker
-            if (selectedMethod != "Cash" && methodAccounts.size > 1) {
-                Text(
-                    "Which account did you send to? *",
-                    fontSize   = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier   = Modifier.padding(bottom = 8.dp)
-                )
-                methodAccounts.forEach { acc ->
-                    val isSel = selectedAccount?.id == acc.id
-                    Surface(
-                        onClick  = { onSelectAccount(if (isSel) null else acc) },
-                        shape    = RoundedCornerShape(8.dp),
-                        color    = if (isSel) Color(0xFFEFF6FF) else Color(0xFFFAFAFA),
-                        border   = BorderStroke(
-                            if (isSel) 2.dp else 1.dp,
-                            if (isSel) Color(0xFF2563EB) else Color(0xFFE2E8F0)
-                        ),
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
-                    ) {
-                        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(
-                                selected = isSel,
-                                onClick  = { onSelectAccount(if (isSel) null else acc) },
-                                colors   = RadioButtonDefaults.colors(selectedColor = Color(0xFF2563EB))
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Column {
-                                Text(
-                                    acc.label,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize   = 13.sp,
-                                    color      = if (isSel) Color(0xFF1D4ED8) else Color(0xFF0F172A)
-                                )
-                                Text(
-                                    acc.number,
-                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                    fontSize   = 12.sp,
-                                    color      = Color(0xFF475569)
-                                )
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-            }
-
-            // Single account info
-            if (selectedMethod != "Cash" && methodAccounts.size == 1) {
-                Surface(
-                    color    = Color(0xFFF0FDF4),
-                    shape    = RoundedCornerShape(8.dp),
-                    border   = BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
-                ) {
-                    Column(Modifier.padding(12.dp, 10.dp)) {
-                        Text(
-                            "Send to:",
-                            fontSize   = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color      = Color(0xFF15803D)
-                        )
-                        Text(
-                            methodAccounts[0].number,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            fontSize   = 15.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color      = Color(0xFF0F172A)
-                        )
-                        if (methodAccounts[0].label.isNotEmpty()) {
-                            Text(
-                                methodAccounts[0].label,
-                                fontSize = 11.sp,
-                                color    = Color(0xFF424B57)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Cash note
-            if (selectedMethod == "Cash") {
-                Surface(
-                    color    = Color(0xFFEFF6FF),
-                    shape    = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
-                ) {
-                    Text(
-                        "Pay cash directly to your organization admin.",
-                        fontSize = 13.sp,
-                        color    = Color(0xFF1E40AF),
-                        modifier = Modifier.padding(12.dp)
-                    )
-                }
-            }
-
-            // ── Receipt picker (non-Cash only) ──
-            if (selectedMethod.isNotEmpty() && selectedMethod != "Cash") {
-                Spacer(Modifier.height(4.dp))
-                ReceiptPickerSection(
-                    receiptUri       = receiptUri,
-                    receiptName      = receiptName,
-                    txId             = txId,
-                    onReceiptPicked  = onReceiptPicked,
-                    onReceiptCleared = onReceiptCleared,
-                )
-                Spacer(Modifier.height(12.dp))
-            }
-
-            // ── TxID (optional when receipt present) ──
-            if (selectedMethod.isNotEmpty() && selectedMethod != "Cash") {
-                Text(
-                    buildString {
-                        append("Transaction ID (TxID)")
-                        if (receiptUri != null) append("  (optional — receipt uploaded)")
-                    },
-                    fontSize   = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color      = if (receiptUri != null) Color(0xFF64748B) else Color(0xFF374151),
-                    modifier   = Modifier.padding(bottom = 4.dp)
-                )
-                OutlinedTextField(
-                    value         = txId,
-                    onValueChange = onTxIdChange,
-                    placeholder   = { Text("Paste your $selectedMethod transaction ID") },
-                    singleLine    = true,
-                    modifier      = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                    shape         = RoundedCornerShape(8.dp)
-                )
-            }
-
-            // ── Payment Summary ──
-            Surface(
-                color    = Color(0xFFF8FAFC),
-                shape    = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
-            ) {
-                Column(Modifier.padding(14.dp)) {
-                    Text(
-                        "PAYMENT SUMMARY",
-                        fontSize      = 11.sp,
-                        fontWeight    = FontWeight.Bold,
-                        color         = Color(0xFF64748B),
-                        letterSpacing = 0.06.sp,
-                        modifier      = Modifier.padding(bottom = 10.dp)
-                    )
-                    if (payMode == PayMode.MONTHLY) {
-                        SummaryRow(
-                            label = "Installment (${selectedMonths.size} month${if (selectedMonths.size > 1) "s" else ""} × ${fmtAmt(baseAmount)})",
-                            value = fmtAmt(totalBase)
-                        )
-                    } else {
-                        SummaryRow(
-                            label = selectedSub?.title ?: "",
-                            value = fmtAmt(totalBase)
-                        )
-                    }
-                    if (totalPenalty > 0) {
-                        SummaryRow(
-                            label      = "Late fee",
-                            value      = fmtAmt(totalPenalty),
-                            valueColor = Color(0xFFDC2626)
-                        )
-                    }
-                    if (fee > 0) {
-                        SummaryRow(
-                            label = "Gateway fee (${"%.2f".format(feeRate * 100)}%)",
-                            value = fmtAmt(fee)
-                        )
-                    }
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Total to send", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text(
-                            fmtAmt(grandTotal),
-                            fontSize   = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color      = Color(0xFF2563EB)
-                        )
-                    }
-                }
-            }
-
-            // ── Submit button ──
-            Button(
-                onClick  = onSubmit,
-                enabled  = !loading && !needsAccountPick && !isImpersonating,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape    = RoundedCornerShape(8.dp),
-                colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A))
-            ) {
-                if (loading) {
-                    Row(
-                        verticalAlignment     = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            color       = Color.White,
-                            modifier    = Modifier.size(18.dp),
-                            strokeWidth = 2.dp
-                        )
-                        Text(
-                            if (isUploadingReceipt) "Uploading receipt…" else "Submitting…",
-                            fontWeight = FontWeight.Bold,
-                            fontSize   = 14.sp
-                        )
-                    }
-                } else {
-                    Text(
-                        when {
-                            isImpersonating  -> "Disabled in impersonation mode"
-                            needsAccountPick -> "Select account above first"
-                            else             -> "Submit Payment — ${fmtAmt(grandTotal)}"
-                        },
-                        fontWeight = FontWeight.Bold,
-                        fontSize   = 14.sp
-                    )
-                }
-            }
-        }
-    }
-}
-
-// ── Small reusable composables ────────────────────────────────────────────────
 
 @Composable
 fun ModeTab(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    Surface(
-        onClick  = onClick,
-        shape    = RoundedCornerShape(8.dp),
-        modifier = modifier,
-        color    = if (selected) Color(0xFFEFF6FF) else Color.White,
-        border   = BorderStroke(
-            if (selected) 2.dp else 1.dp,
-            if (selected) Color(0xFF2563EB) else Color(0xFFE2E8F0)
-        )
-    ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(10.dp)) {
-            Text(
-                label,
-                fontSize   = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color      = if (selected) Color(0xFF1D4ED8) else Color(0xFF64748B)
-            )
-        }
+    Surface(onClick = onClick, shape = RoundedCornerShape(10.dp), modifier = modifier, color = if (selected) Color(0xFFEFF6FF) else Color.White, border = BorderStroke(if (selected) 1.5.dp else 1.dp, if (selected) Color(0xFF2563EB) else Color(0xFFE2E8F0))) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(12.dp)) { Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (selected) Color(0xFF1D4ED8) else Color(0xFF64748B)) }
     }
 }
 
 @Composable
 fun TypeBadge(text: String, bg: Color, fg: Color) {
-    Surface(color = bg, shape = RoundedCornerShape(99.dp)) {
-        Text(
-            text,
-            fontSize   = 10.sp,
-            fontWeight = FontWeight.Bold,
-            color      = fg,
-            modifier   = Modifier.padding(8.dp, 2.dp)
-        )
-    }
+    Surface(color = bg, shape = RoundedCornerShape(99.dp)) { Text(text, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = fg, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) }
 }
 
 @Composable
-fun SummaryRow(label: String, value: String, valueColor: Color = Color(0xFF0F172A)) {
-    Row(
-        Modifier.fillMaxWidth().padding(bottom = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(label, fontSize = 13.sp, color = Color(0xFF64748B), modifier = Modifier.weight(1f))
-        Text(value, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = valueColor)
-    }
-}
-
-@Composable
-fun InfoBanner(
-    bg:         Color,
-    border:     Color,
-    text:       String,
-    title:      String      = "",
-    titleColor: Color       = Color(0xFF0F172A),
-    textColor:  Color       = Color(0xFF475569)
-) {
-    Surface(
-        color    = bg,
-        shape    = RoundedCornerShape(8.dp),
-        border   = BorderStroke(1.dp, border),
-        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
-    ) {
-        Column(Modifier.padding(12.dp)) {
-            if (title.isNotEmpty()) {
-                Text(
-                    title,
-                    fontWeight = FontWeight.Bold,
-                    color      = titleColor,
-                    fontSize   = 13.sp,
-                    modifier   = Modifier.padding(bottom = 4.dp)
-                )
-            }
-            Text(
-                text,
-                color    = textColor,
-                fontSize = if (title.isNotEmpty()) 12.sp else 13.sp
-            )
+fun InfoBanner(bg: Color, border: Color, text: String, title: String = "", titleColor: Color = Color(0xFF0F172A), textColor: Color = Color(0xFF475569)) {
+    Surface(color = bg, shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, border), modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+        Column(Modifier.padding(16.dp)) {
+            if (title.isNotEmpty()) Text(title, fontWeight = FontWeight.Bold, color = titleColor, fontSize = 14.sp, modifier = Modifier.padding(bottom = 4.dp))
+            Text(text, color = textColor, fontSize = if (title.isNotEmpty()) 13.sp else 14.sp, fontWeight = if (title.isEmpty()) FontWeight.Medium else FontWeight.Normal)
         }
     }
 }

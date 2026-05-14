@@ -1,6 +1,11 @@
 // core/navigation/AppNavGraph.kt
 package com.absis.capitalsync.core.navigation
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -58,63 +63,43 @@ fun AppNavGraph(
     paddingValues:    PaddingValues,
     startDestination: String = Screen.Login.route,
 ) {
+    // ── Added Smooth Animations ──
     NavHost(
-        navController    = navController,
-        startDestination = startDestination,
-        modifier         = Modifier.padding(paddingValues)
+        navController      = navController,
+        startDestination   = startDestination,
+        modifier           = Modifier.padding(paddingValues),
+        enterTransition    = { fadeIn(tween(250)) + scaleIn(initialScale = 0.98f, animationSpec = tween(250)) },
+        exitTransition     = { fadeOut(tween(250)) + scaleOut(targetScale = 1.02f, animationSpec = tween(250)) },
+        popEnterTransition = { fadeIn(tween(250)) + scaleIn(initialScale = 1.02f, animationSpec = tween(250)) },
+        popExitTransition  = { fadeOut(tween(250)) + scaleOut(targetScale = 0.98f, animationSpec = tween(250)) }
     ) {
 
         // ── Auth (no bottom nav) ──────────────────────────────────────────────
 
         composable(Screen.Login.route) {
             LoginScreen(
-                onNavigateToDashboard      = {
-                    navController.navigate(Screen.Dashboard.route) { popUpTo(0) }
-                },
-                onNavigateToAdmin          = {
-                    navController.navigate(Screen.Admin.route) { popUpTo(0) }
-                },
-                onNavigateToSuperAdmin     = {
-                    // Superadmin panel — build separately
-                },
-                onNavigateToForgotPassword = {
-                    navController.navigate(Screen.ForgotPassword.route)
-                },
-                onNavigateToRegister       = {
-                    navController.navigate(Screen.Register.route)
-                }
+                onNavigateToDashboard      = { navController.navigate(Screen.Dashboard.route) { popUpTo(0) } },
+                onNavigateToAdmin          = { navController.navigate(Screen.Admin.route) { popUpTo(0) } },
+                onNavigateToSuperAdmin     = { }, // Superadmin panel
+                onNavigateToForgotPassword = { navController.navigate(Screen.ForgotPassword.route) },
+                onNavigateToRegister       = { navController.navigate(Screen.Register.route) }
             )
         }
 
         composable(Screen.Register.route) {
-            RegisterScreen(
-                onNavigateToLogin = { navController.popBackStack() }
-            )
+            RegisterScreen(onNavigateToLogin = { navController.popBackStack() })
         }
 
         composable(Screen.ForgotPassword.route) {
-            ForgotPasswordScreen(
-                onBack = { navController.popBackStack() }
-            )
+            ForgotPasswordScreen(onBack = { navController.popBackStack() })
         }
 
-        // Reset password — receives oobCode from deep link or nav arg
         composable(
             route     = Screen.ResetPassword.route,
-            arguments = listOf(
-                navArgument("oobCode") {
-                    type         = NavType.StringType
-                    defaultValue = ""
-                }
-            )
+            arguments = listOf(navArgument("oobCode") { type = NavType.StringType; defaultValue = "" })
         ) { backStack ->
             val oobCode = backStack.arguments?.getString("oobCode") ?: ""
-            ResetPasswordScreen(
-                oobCode = oobCode,
-                onDone  = {
-                    navController.navigate(Screen.Login.route) { popUpTo(0) }
-                }
-            )
+            ResetPasswordScreen(oobCode = oobCode, onDone = { navController.navigate(Screen.Login.route) { popUpTo(0) } })
         }
 
         // ── Member screens (bottom nav visible) ───────────────────────────────
@@ -124,67 +109,36 @@ fun AppNavGraph(
                 onNavigateToInstallment = { navController.navigate(Screen.Installment.route) },
                 onNavigateToLedger      = { navController.navigate(Screen.Ledger.route) },
                 onNavigateToLoans       = { navController.navigate(Screen.Loans.route) },
-                onNavigateToAdmin       = { navController.navigate(Screen.Admin.route) }
+                onNavigateToAdmin       = { navController.navigate(Screen.Admin.route) },
+                onNavigateToExpenses    = { navController.navigate(Screen.Expenses.route) }
             )
         }
 
         composable(Screen.Installment.route) {
-            InstallmentScreen(
-                onNavigateToLedger = { navController.navigate(Screen.Ledger.route) }
-            )
+            InstallmentScreen(onNavigateToLedger = { navController.navigate(Screen.Ledger.route) })
         }
 
-        composable(Screen.Investments.route) {
-            InvestmentsScreen()
-        }
-
-        composable(Screen.Expenses.route) {
-            ExpensesScreen()
-        }
-
-        composable(Screen.Profile.route) {
-            ProfileScreen()
-        }
-
-        composable(Screen.Loans.route) {
-            LoansScreen()
-        }
-
-        composable(Screen.Ledger.route) {
-            LedgerScreen()
-        }
+        composable(Screen.Investments.route) { InvestmentsScreen() }
+        composable(Screen.Expenses.route) { ExpensesScreen() }
+        composable(Screen.Profile.route) { ProfileScreen() }
+        composable(Screen.Loans.route) { LoansScreen() }
+        composable(Screen.Ledger.route) { LedgerScreen() }
 
         // ── Admin (placeholder) ───────────────────────────────────────────────
         composable(Screen.Admin.route) {
-            AdminPlaceholder(
-                onBack = { navController.popBackStack() }
-            )
+            AdminPlaceholder(onBack = { navController.popBackStack() })
         }
     }
 }
 
-// ── Temporary admin placeholder ───────────────────────────────────────────────
 @Composable
 private fun AdminPlaceholder(onBack: () -> Unit) {
-    Box(
-        modifier         = Modifier.fillMaxSize().padding(24.dp),
-        contentAlignment = Alignment.Center
-    ) {
+    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                "🛠 Admin Panel",
-                style      = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                "Admin screens are built separately.",
-                color    = SubtitleGray,
-                modifier = Modifier.padding(top = 8.dp)
-            )
+            Text("🛠 Admin Panel", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("Admin screens are built separately.", color = SubtitleGray, modifier = Modifier.padding(top = 8.dp))
             Spacer(Modifier.height(20.dp))
-            OutlinedButton(onClick = onBack) {
-                Text("← Go Back")
-            }
+            OutlinedButton(onClick = onBack) { Text("← Go Back") }
         }
     }
 }
