@@ -33,9 +33,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
-import androidx.compose.foundation.Image
-import androidx.compose.ui.res.painterResource
-import com.absis.capitalsync.R
 
 fun fmtAmt(n: Number) = "৳${NumberFormat.getNumberInstance(Locale.US).format(n.toLong())}"
 
@@ -68,10 +65,8 @@ fun InstallmentScreen(
     val snackBarHost  = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
-    // ── Pull-to-Refresh State ──
     var isRefreshing by remember { mutableStateOf(false) }
 
-    // Show error snackbar
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let {
             snackBarHost.showSnackbar(it)
@@ -91,14 +86,13 @@ fun InstallmentScreen(
         snackbarHost = { SnackbarHost(snackBarHost) },
         containerColor = Color(0xFFF8FAFC)
     ) { paddingValues ->
-        // PullToRefreshBox handles all the nested scrolling and refreshing UI
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = {
                 coroutineScope.launch {
                     isRefreshing = true
-                    vm.refresh() // Refetches data. Paid months will automatically disappear!
-                    delay(1000)  // Minimum UI delay for visual feedback
+                    vm.refresh() 
+                    delay(1000)  
                     isRefreshing = false
                 }
             },
@@ -112,20 +106,25 @@ fun InstallmentScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp)
             ) {
-                // ── Header ──
+                // ── Dynamic Organization Header ──
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier          = Modifier.padding(bottom = 24.dp)
                 ) {
-                    Image(
-                        painter = painterResource(id = R.mipmap.ic_launcher_round),
-                        contentDescription = "App Icon",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(CircleShape)
-                    )
-                    Spacer(Modifier.width(14.dp))
+                    // Only show the image if an orgLogoUrl exists in the database
+                    if (!uiState.orgLogoUrl.isNullOrEmpty()) {
+                        AsyncImage(
+                            model = uiState.orgLogoUrl,
+                            contentDescription = "Organization Logo",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
+                        )
+                        Spacer(Modifier.width(14.dp))
+                    }
+                    
                     Column {
                         Text(
                             "Pay Installment",
@@ -309,7 +308,7 @@ fun PaymentMethodSection(
                     val sel = m == selectedMethod
                     Surface(
                         onClick = { onSelectMethod(m) },
-                        enabled = isStepEnabled, // Lint Fix: Ensures isStepEnabled is used
+                        enabled = isStepEnabled, 
                         shape = RoundedCornerShape(10.dp),
                         color = if (sel) Color(0xFFEFF6FF) else Color.White,
                         border = BorderStroke(if (sel) 1.5.dp else 1.dp, if (sel) Color(0xFF2563EB) else Color(0xFFE2E8F0))
@@ -331,7 +330,7 @@ fun PaymentMethodSection(
                     val isSel = selectedAccount?.id == acc.id
                     Surface(
                         onClick = { onSelectAccount(if (isSel) null else acc) },
-                        enabled = isStepEnabled, // Lint Fix: Ensures isStepEnabled is used
+                        enabled = isStepEnabled, 
                         shape = RoundedCornerShape(12.dp),
                         color = if (isSel) Color(0xFFEFF6FF) else Color(0xFFF8FAFC),
                         border = BorderStroke(if (isSel) 1.5.dp else 1.dp, if (isSel) Color(0xFF2563EB) else Color(0xFFE2E8F0)),
@@ -377,7 +376,7 @@ fun ProofOfPaymentSection(
         if (uri == null) return@rememberLauncherForActivityResult
 
         val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
-        var resolvedName: String? = null // Lint fix: modified properly below
+        var resolvedName: String? = null 
 
         context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) {
@@ -431,7 +430,7 @@ fun ProofOfPaymentSection(
             OutlinedTextField(
                 value = txId,
                 onValueChange = onTxIdChange,
-                enabled = isStepEnabled, // Lint Fix: Ensures isStepEnabled is used
+                enabled = isStepEnabled, 
                 placeholder = { Text("Paste your $selectedMethod transaction ID", fontSize = 13.sp, color = Color(0xFF94A3B8)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
@@ -492,8 +491,6 @@ fun ReviewAndSubmitCard(
         }
     }
 }
-
-// ── Success Screen ────────────────────────────────────────────────────────────
 
 @Composable
 fun SuccessScreen(onPayAgain: () -> Unit, onViewLedger: () -> Unit) {

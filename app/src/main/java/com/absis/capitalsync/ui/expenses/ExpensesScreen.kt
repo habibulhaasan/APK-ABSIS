@@ -4,7 +4,6 @@ package com.absis.capitalsync.ui.expenses
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -19,7 +18,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.absis.capitalsync.ui.common.SmartImage
+import coil.compose.AsyncImage
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -33,6 +32,20 @@ fun fmtDate(dateStr: String): String {
         val d = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateStr) ?: return dateStr
         SimpleDateFormat("dd MMM yyyy", Locale.US).format(d)
     } catch (_: Exception) { dateStr }
+}
+
+// Extract standard image thumbnail from Google Drive URLs
+fun getDriveThumbUrl(url: String?, fileId: String?): String? {
+    if (!fileId.isNullOrEmpty()) return "https://drive.google.com/thumbnail?id=$fileId&sz=w1200"
+    if (!url.isNullOrEmpty()) {
+        val regex = "/d/([a-zA-Z0-9_-]+)".toRegex()
+        val match = regex.find(url)
+        if (match != null) {
+            return "https://drive.google.com/thumbnail?id=${match.groupValues[1]}&sz=w1200"
+        }
+        return url
+    }
+    return null
 }
 
 // Map Category to Colors
@@ -60,7 +73,7 @@ fun ExpensesScreen(vm: ExpensesViewModel = hiltViewModel()) {
             modifier = Modifier.padding(paddingValues).fillMaxSize()
         ) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
-
+                
                 // ── Header ──
                 item {
                     Text("Expenses", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF0F172A))
@@ -76,23 +89,22 @@ fun ExpensesScreen(vm: ExpensesViewModel = hiltViewModel()) {
                     return@LazyColumn
                 }
 
-                // ── Summary Cards ──
+                // ── Summary Cards (2x2 Grid Layout) ──
                 item {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
-                        item {
-                            ExpenseStatCard("Total Expenses", fmt(state.total), "${state.items.size} entries", Color(0xFFDC2626), Color(0xFFFEF2F2), Color(0xFFFECACA))
+                    Column(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            ExpenseStatCard("Total Expenses", fmt(state.total), "${state.items.size} entries", Color(0xFFDC2626), Color(0xFFFEF2F2), Color(0xFFFECACA), Modifier.weight(1f))
+                            
+                            val curMonthLabel = SimpleDateFormat("MMM yyyy", Locale.US).format(Date())
+                            ExpenseStatCard("This Month", fmt(state.thisMonthTotal), curMonthLabel, Color(0xFFC2410C), Color(0xFFFFF7ED), Color(0xFFFED7AA), Modifier.weight(1f))
                         }
-                        item {
-                            val curMonthLabel = SimpleDateFormat("MMMM yyyy", Locale.US).format(Date())
-                            ExpenseStatCard("This Month", fmt(state.thisMonthTotal), curMonthLabel, Color(0xFFC2410C), Color(0xFFFFF7ED), Color(0xFFFED7AA))
-                        }
-                        if (state.topCategory != null) {
-                            item {
-                                ExpenseStatCard("Top Category", state.topCategory!!.first, fmt(state.topCategory!!.second), Color(0xFF0F172A), Color(0xFFF8FAFC), Color(0xFFE2E8F0))
-                            }
-                        }
-                        item {
-                            ExpenseStatCard("Categories", state.categoryCount.toString(), "in use", Color(0xFF15803D), Color(0xFFF0FDF4), Color(0xFFBBF7D0))
+                        Spacer(Modifier.height(10.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            val topCatName = state.topCategory?.first ?: "—"
+                            val topCatAmt = if (state.topCategory != null) fmt(state.topCategory!!.second) else "—"
+                            ExpenseStatCard("Top Category", topCatName, topCatAmt, Color(0xFF0F172A), Color(0xFFF8FAFC), Color(0xFFE2E8F0), Modifier.weight(1f))
+                            
+                            ExpenseStatCard("Categories", state.categoryCount.toString(), "in use", Color(0xFF15803D), Color(0xFFF0FDF4), Color(0xFFBBF7D0), Modifier.weight(1f))
                         }
                     }
                 }
@@ -106,14 +118,14 @@ fun ExpensesScreen(vm: ExpensesViewModel = hiltViewModel()) {
                         ) {
                             Column(Modifier.padding(16.dp)) {
                                 Text("Spending by Category", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF0F172A), modifier = Modifier.padding(bottom = 12.dp))
-
+                                
                                 state.categoryBreakdown.forEach { cat ->
                                     val colors = getCategoryColors(cat.category)
                                     Column(Modifier.padding(bottom = 10.dp)) {
                                         Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                                             Text(cat.category, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color(0xFF0F172A))
                                             Text(
-                                                "${fmt(cat.amount)}  (${cat.percentage}%)",
+                                                "${fmt(cat.amount)}  (${cat.percentage}%)", 
                                                 fontSize = 12.sp, color = Color(0xFF64748B)
                                             )
                                         }
@@ -170,7 +182,7 @@ fun ExpensesScreen(vm: ExpensesViewModel = hiltViewModel()) {
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(fmtDate(item.date), fontSize = 11.sp, color = Color(0xFF64748B), modifier = Modifier.weight(0.8f))
-
+                                        
                                         Column(Modifier.weight(1.2f).padding(end = 8.dp)) {
                                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 4.dp)) {
                                                 CategoryBadge(item.category)
@@ -200,7 +212,7 @@ fun ExpensesScreen(vm: ExpensesViewModel = hiltViewModel()) {
                         }
                     }
                 }
-
+                
                 item { Spacer(Modifier.height(40.dp)) } // Bottom padding
             }
         }
@@ -221,16 +233,16 @@ fun ExpensesScreen(vm: ExpensesViewModel = hiltViewModel()) {
 // ── Shared UI Components ──────────────────────────────────────────────────────
 
 @Composable
-fun ExpenseStatCard(label: String, value: String, sub: String, color: Color, bg: Color, border: Color) {
+fun ExpenseStatCard(label: String, value: String, sub: String, color: Color, bg: Color, border: Color, modifier: Modifier = Modifier) {
     Surface(
         color = bg, shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, border),
-        modifier = Modifier.width(140.dp)
+        modifier = modifier
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(label.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B), letterSpacing = 0.06.sp)
-            Spacer(Modifier.height(6.dp))
-            Text(value, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(sub, fontSize = 11.sp, color = Color(0xFF94A3B8), modifier = Modifier.padding(top = 4.dp))
+        Column(Modifier.padding(14.dp)) {
+            Text(label.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B), letterSpacing = 0.06.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(4.dp))
+            Text(value, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(sub, fontSize = 11.sp, color = Color(0xFF94A3B8), modifier = Modifier.padding(top = 2.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -246,12 +258,12 @@ fun CategoryBadge(category: String) {
 @Composable
 fun ExpenseDetailSheet(expense: ExpenseItem, onClose: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
-
+        
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             CategoryBadge(expense.category)
             Text(fmtDate(expense.date), fontSize = 12.sp, color = Color(0xFF64748B), fontWeight = FontWeight.Medium)
         }
-
+        
         Spacer(Modifier.height(14.dp))
         Text(expense.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A), lineHeight = 24.sp)
         Spacer(Modifier.height(16.dp))
@@ -276,7 +288,9 @@ fun ExpenseDetailSheet(expense: ExpenseItem, onClose: () -> Unit) {
         Spacer(Modifier.height(16.dp))
 
         if (expense.receiptUrl != null || expense.receiptFileId != null) {
-            val url = expense.receiptUrl ?: "https://drive.google.com/thumbnail?id=${expense.receiptFileId}&sz=w1200"
+            // Process the Google Drive URL
+            val thumbUrl = getDriveThumbUrl(expense.receiptUrl, expense.receiptFileId)
+            
             Surface(
                 color = Color(0xFFF8FAFC), shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                 modifier = Modifier.fillMaxWidth()
@@ -286,8 +300,17 @@ fun ExpenseDetailSheet(expense: ExpenseItem, onClose: () -> Unit) {
                         Text("📎 ${expense.receiptName?.ifEmpty { "Receipt" } ?: "Receipt"}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
                     }
                     HorizontalDivider(color = Color(0xFFE2E8F0))
-                    Box(Modifier.fillMaxWidth().height(180.dp).background(Color(0xFFF8FAFC)), contentAlignment = Alignment.Center) {
-                        SmartImage(source = url, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(12.dp))
+                    Box(Modifier.fillMaxWidth().height(240.dp).background(Color(0xFFF8FAFC)), contentAlignment = Alignment.Center) {
+                        if (thumbUrl != null) {
+                            AsyncImage(
+                                model = thumbUrl,
+                                contentDescription = "Receipt Image",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize().padding(8.dp)
+                            )
+                        } else {
+                            Text("No valid image URL found", fontSize = 12.sp, color = Color(0xFF94A3B8))
+                        }
                     }
                 }
             }
@@ -299,10 +322,10 @@ fun ExpenseDetailSheet(expense: ExpenseItem, onClose: () -> Unit) {
 
         Spacer(Modifier.height(24.dp))
         Button(
-            onClick = onClose,
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            shape = RoundedCornerShape(8.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF64748B)),
+            onClick = onClose, 
+            modifier = Modifier.fillMaxWidth().height(50.dp), 
+            shape = RoundedCornerShape(8.dp), 
+            colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF64748B)), 
             border = BorderStroke(1.dp, Color(0xFFE2E8F0))
         ) {
             Text("Close", fontWeight = FontWeight.SemiBold)

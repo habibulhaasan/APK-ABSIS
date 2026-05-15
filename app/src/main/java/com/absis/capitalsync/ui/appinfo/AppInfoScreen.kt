@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -63,14 +64,16 @@ fun AppInfoScreen(
                 .padding(16.dp)
         ) {
             
-            // ── App Header Identity (Using App Icon) ──
+            // ── App Header Identity (Using your custom drawable logo) ──
             Column(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // This safely loads your app_logo.png from the res/drawable folder!
                 Image(
-                    painter = painterResource(id = R.mipmap.ic_launcher_round),
-                    contentDescription = "App Icon",
+                    painter = painterResource(id = R.drawable.app_logo),
+                    contentDescription = "App Logo",
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .size(80.dp)
                         .clip(RoundedCornerShape(20.dp))
