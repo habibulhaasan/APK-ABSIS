@@ -26,6 +26,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.absis.capitalsync.ui.appinfo.AppInfoScreen
 import com.absis.capitalsync.ui.auth.ForgotPasswordScreen
 import com.absis.capitalsync.ui.auth.LoginScreen
 import com.absis.capitalsync.ui.auth.RegisterScreen
@@ -55,6 +56,7 @@ sealed class Screen(val route: String) {
     object Loans          : Screen("loans")
     object Ledger         : Screen("ledger")
     object Admin          : Screen("admin")
+    object AppInfo        : Screen("app_info")
 }
 
 @Composable
@@ -63,18 +65,16 @@ fun AppNavGraph(
     paddingValues:    PaddingValues,
     startDestination: String = Screen.Login.route,
 ) {
-    // ── Added Smooth Animations ──
     NavHost(
         navController      = navController,
         startDestination   = startDestination,
         modifier           = Modifier.padding(paddingValues),
+        // ── Smooth Transitions ──
         enterTransition    = { fadeIn(tween(250)) + scaleIn(initialScale = 0.98f, animationSpec = tween(250)) },
         exitTransition     = { fadeOut(tween(250)) + scaleOut(targetScale = 1.02f, animationSpec = tween(250)) },
         popEnterTransition = { fadeIn(tween(250)) + scaleIn(initialScale = 1.02f, animationSpec = tween(250)) },
         popExitTransition  = { fadeOut(tween(250)) + scaleOut(targetScale = 0.98f, animationSpec = tween(250)) }
     ) {
-
-        // ── Auth (no bottom nav) ──────────────────────────────────────────────
 
         composable(Screen.Login.route) {
             LoginScreen(
@@ -102,8 +102,6 @@ fun AppNavGraph(
             ResetPasswordScreen(oobCode = oobCode, onDone = { navController.navigate(Screen.Login.route) { popUpTo(0) } })
         }
 
-        // ── Member screens (bottom nav visible) ───────────────────────────────
-
         composable(Screen.Dashboard.route) {
             DashboardScreen(
                 onNavigateToInstallment = { navController.navigate(Screen.Installment.route) },
@@ -123,8 +121,11 @@ fun AppNavGraph(
         composable(Screen.Profile.route) { ProfileScreen() }
         composable(Screen.Loans.route) { LoansScreen() }
         composable(Screen.Ledger.route) { LedgerScreen() }
+        
+        composable(Screen.AppInfo.route) { 
+            AppInfoScreen(onBack = { navController.popBackStack() }) 
+        }
 
-        // ── Admin (placeholder) ───────────────────────────────────────────────
         composable(Screen.Admin.route) {
             AdminPlaceholder(onBack = { navController.popBackStack() })
         }

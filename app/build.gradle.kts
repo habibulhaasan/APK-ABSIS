@@ -18,8 +18,8 @@ android {
         applicationId = "com.absis.capitalsync"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.0.0"
+        versionCode = 4
+        versionName = "2.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -117,4 +117,6 @@ dependencies {
 
     implementation("androidx.compose.material3:material3:1.3.0")
     implementation("io.coil-kt:coil-compose:2.6.0")
+
+    implementation("androidx.compose.material:material-icons-extended")
 }

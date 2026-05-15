@@ -33,45 +33,65 @@ data class UpdateInfo(
 fun AppUpdateChecker(
     currentVersion: String,
     jsonUrl: String,
-    apkDownloadUrl: String
+    apkDownloadUrl: String,
+    fallbackJsonUrl: String? = null,
+    fallbackApkUrl: String? = null
 ) {
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
     var showDialog by remember { mutableStateOf(false) }
+    var activeApkUrl by remember { mutableStateOf(apkDownloadUrl) }
 
     // Check for updates in the background when the component loads
     LaunchedEffect(Unit) {
+        var result: String? = null
+
+        // 1. Try Primary Server
         try {
-            val result = withContext(Dispatchers.IO) {
-                URL(jsonUrl).readText()
-            }
-            val json = JSONObject(result)
-            val serverVersion = json.optString("version", "1.0.0")
-            
-            // Compare versions
-            if (isNewerVersion(currentVersion, serverVersion)) {
-                val changesArray = json.optJSONArray("changelog")
-                val changesList = mutableListOf<String>()
-                if (changesArray != null) {
-                    for (i in 0 until changesArray.length()) {
-                        changesList.add(changesArray.getString(i))
-                    }
-                }
-                updateInfo = UpdateInfo(
-                    version = serverVersion,
-                    releaseDate = json.optString("releaseDate", ""),
-                    changelog = changesList
-                )
-                showDialog = true
-            }
+            result = withContext(Dispatchers.IO) { URL(jsonUrl).readText() }
+            activeApkUrl = apkDownloadUrl
         } catch (e: Exception) {
-            // Silently fail if there's no internet or the URL is unreachable
+            // 2. If Primary fails, try Fallback Server
+            if (fallbackJsonUrl != null) {
+                try {
+                    result = withContext(Dispatchers.IO) { URL(fallbackJsonUrl).readText() }
+                    activeApkUrl = fallbackApkUrl ?: apkDownloadUrl
+                } catch (e2: Exception) {
+                    // Both servers failed; silently fail and do nothing.
+                }
+            }
+        }
+
+        if (result != null) {
+            try {
+                val json = JSONObject(result)
+                val serverVersion = json.optString("version", "1.0.0")
+                
+                // Compare versions
+                if (isNewerVersion(currentVersion, serverVersion)) {
+                    val changesArray = json.optJSONArray("changelog")
+                    val changesList = mutableListOf<String>()
+                    if (changesArray != null) {
+                        for (i in 0 until changesArray.length()) {
+                            changesList.add(changesArray.getString(i))
+                        }
+                    }
+                    updateInfo = UpdateInfo(
+                        version = serverVersion,
+                        releaseDate = json.optString("releaseDate", ""),
+                        changelog = changesList
+                    )
+                    showDialog = true
+                }
+            } catch (e: Exception) {
+                // Invalid JSON format, fail silently
+            }
         }
     }
 
     if (showDialog && updateInfo != null) {
         UpdateDialog(
             info = updateInfo!!,
-            apkDownloadUrl = apkDownloadUrl,
+            apkDownloadUrl = activeApkUrl,
             onDismiss = { showDialog = false }
         )
     }

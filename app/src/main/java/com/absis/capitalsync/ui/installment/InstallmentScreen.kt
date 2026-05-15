@@ -33,6 +33,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.absis.capitalsync.R
 
 fun fmtAmt(n: Number) = "৳${NumberFormat.getNumberInstance(Locale.US).format(n.toLong())}"
 
@@ -114,18 +117,15 @@ fun InstallmentScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier          = Modifier.padding(bottom = 24.dp)
                 ) {
-                    uiState.orgLogoUrl?.let {
-                        Surface(
-                            Modifier.size(48.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFF2563EB)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text("🏦", fontSize = 22.sp)
-                            }
-                        }
-                        Spacer(Modifier.width(14.dp))
-                    }
+                    Image(
+                        painter = painterResource(id = R.mipmap.ic_launcher_round),
+                        contentDescription = "App Icon",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                    )
+                    Spacer(Modifier.width(14.dp))
                     Column {
                         Text(
                             "Pay Installment",
